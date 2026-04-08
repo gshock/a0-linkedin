@@ -1,0 +1,9 @@
+name: linkedin
+title: LinkedIn
+description: "Manage LinkedIn posting workflows: account checks, organization discovery, approved text posting, and recent post retrieval via API-first MVP."
+version: 0.2.1
+settings_sections:
+  - external
+per_project_config: true
+per_agent_config: true
+always_enabled: false

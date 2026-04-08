@@ -1,0 +1,67 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# --- Virtual environments ---
+.venv/
+venv/
+env/
+ENV/
+
+# --- Build / packaging ---
+build/
+dist/
+*.egg-info/
+.eggs/
+*.whl
+
+# --- Logs / temp ---
+*.log
+*.tmp
+*.temp
+.tmp/
+tmp/
+
+# --- OS files ---
+.DS_Store
+Thumbs.db
+
+# --- Editors / IDEs ---
+.github/
+.vs/
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# --- Test / local output ---
+artifacts/
+playwright-report/
+test-results/
+
+# --- Secrets / local config ---
+.env
+.env.*
+*.env
+secrets.env
+
+# --- Agent Zero / plugin local-only files ---
+.local/
+
+# --- Node (only if you end up using frontend tooling locally) ---
+node_modules/
+.npm/
+
+# --- Agent Zero runtime local artifacts ---
+.runtime_config.json
+.toggle-*

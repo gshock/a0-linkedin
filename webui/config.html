@@ -1,0 +1,173 @@
+<html>
+<head><title>LinkedIn</title></head>
+<body>
+  <div x-data="{ activeTab: 'personal' }"
+       x-init="
+         if (!config.profiles) config.profiles = {};
+
+         if (!config.profiles.personal_app) config.profiles.personal_app = { label: 'Personal App', linkedin: {} };
+         if (!config.profiles.personal_app.linkedin) config.profiles.personal_app.linkedin = {};
+         if (!config.profiles.org_app) config.profiles.org_app = { label: 'Organization App', linkedin: {} };
+         if (!config.profiles.org_app.linkedin) config.profiles.org_app.linkedin = {};
+
+         if (!config.active_profile) config.active_profile = 'personal_app';
+         if (!config.linkedin) config.linkedin = {};
+
+         if (!config.profiles.personal_app.linkedin.mode) config.profiles.personal_app.linkedin.mode = 'api';
+         if (!config.profiles.personal_app.linkedin.api_base_url) config.profiles.personal_app.linkedin.api_base_url = 'https://api.linkedin.com';
+         if (config.profiles.personal_app.linkedin.access_token === undefined) config.profiles.personal_app.linkedin.access_token = '';
+         if (!config.profiles.personal_app.linkedin.person_urn) config.profiles.personal_app.linkedin.person_urn = '';
+         if (!config.profiles.personal_app.linkedin.organization_urn) config.profiles.personal_app.linkedin.organization_urn = '';
+         if (!Array.isArray(config.profiles.personal_app.linkedin.organization_urns)) config.profiles.personal_app.linkedin.organization_urns = [];
+         if (!Array.isArray(config.profiles.personal_app.linkedin.scopes)) config.profiles.personal_app.linkedin.scopes = ['w_member_social'];
+         if (!config.profiles.personal_app.linkedin.scopes_text) config.profiles.personal_app.linkedin.scopes_text = (config.profiles.personal_app.linkedin.scopes || []).join(', ');
+         if (!config.profiles.personal_app.linkedin.organization_urns_text) config.profiles.personal_app.linkedin.organization_urns_text = (config.profiles.personal_app.linkedin.organization_urns || []).join('\n');
+         if (!config.profiles.personal_app.linkedin.default_target) config.profiles.personal_app.linkedin.default_target = 'personal';
+         if (!config.profiles.personal_app.linkedin.linkedin_version) config.profiles.personal_app.linkedin.linkedin_version = '202601';
+         if (!config.profiles.personal_app.linkedin.default_visibility) config.profiles.personal_app.linkedin.default_visibility = 'PUBLIC';
+         if (config.profiles.personal_app.linkedin.dry_run === undefined) config.profiles.personal_app.linkedin.dry_run = true;
+         if (!config.profiles.personal_app.linkedin.timeout_seconds) config.profiles.personal_app.linkedin.timeout_seconds = 30;
+         if (!config.profiles.personal_app.linkedin.user_agent) config.profiles.personal_app.linkedin.user_agent = 'AgentZero-LinkedIn-Plugin/0.2.0';
+
+         if (!config.profiles.org_app.linkedin.mode) config.profiles.org_app.linkedin.mode = 'api';
+         if (!config.profiles.org_app.linkedin.api_base_url) config.profiles.org_app.linkedin.api_base_url = 'https://api.linkedin.com';
+         if (config.profiles.org_app.linkedin.access_token === undefined) config.profiles.org_app.linkedin.access_token = '';
+         if (!config.profiles.org_app.linkedin.person_urn) config.profiles.org_app.linkedin.person_urn = '';
+         if (!config.profiles.org_app.linkedin.organization_urn) config.profiles.org_app.linkedin.organization_urn = '';
+         if (!Array.isArray(config.profiles.org_app.linkedin.organization_urns)) config.profiles.org_app.linkedin.organization_urns = [];
+         if (!Array.isArray(config.profiles.org_app.linkedin.scopes)) config.profiles.org_app.linkedin.scopes = ['w_organization_social', 'r_organization_social'];
+         if (!config.profiles.org_app.linkedin.scopes_text) config.profiles.org_app.linkedin.scopes_text = (config.profiles.org_app.linkedin.scopes || []).join(', ');
+         if (!config.profiles.org_app.linkedin.organization_urns_text) config.profiles.org_app.linkedin.organization_urns_text = (config.profiles.org_app.linkedin.organization_urns || []).join('\n');
+         if (!config.profiles.org_app.linkedin.default_target) config.profiles.org_app.linkedin.default_target = 'organization';
+         if (!config.profiles.org_app.linkedin.linkedin_version) config.profiles.org_app.linkedin.linkedin_version = '202601';
+         if (!config.profiles.org_app.linkedin.default_visibility) config.profiles.org_app.linkedin.default_visibility = 'PUBLIC';
+         if (config.profiles.org_app.linkedin.dry_run === undefined) config.profiles.org_app.linkedin.dry_run = true;
+         if (!config.profiles.org_app.linkedin.timeout_seconds) config.profiles.org_app.linkedin.timeout_seconds = 30;
+         if (!config.profiles.org_app.linkedin.user_agent) config.profiles.org_app.linkedin.user_agent = 'AgentZero-LinkedIn-Plugin/0.2.0';
+
+         if (!config.linkedin.linkedin_version) config.linkedin.linkedin_version = config.profiles[config.active_profile].linkedin.linkedin_version || '202601';
+       "
+       style="padding: 12px; color: var(--text-color, #e8e8e8); background: var(--bg-color, transparent);">
+
+    <div style="margin-bottom: 12px; padding: 10px; background: var(--bg-secondary, #252525); border: 1px solid var(--border-color, #404040); border-radius: 6px; font-size: 12px; color: var(--text-color, #e8e8e8);">
+      The plugin stores separate <strong>personal</strong> and <strong>organization</strong> LinkedIn profiles. In chat, the agent should use the correct one based on your prompt. If you do not specify which mode to use, the agent should ask.
+    </div>
+
+    <div style="display: flex; gap: 0; border-bottom: 2px solid var(--border-color, #3a3a3a); margin-bottom: 16px;">
+      <template x-for="tab in ['personal', 'organization', 'runtime']">
+        <button @click="activeTab = tab"
+          :style="'padding: 8px 16px; border: none; background: none; cursor: pointer; font-size: 12px; font-weight: 600; margin-bottom: -2px; color: ' + (activeTab === tab ? '#0A66C2' : 'var(--text-secondary, #b5b5b5)') + '; border-bottom: 2px solid ' + (activeTab === tab ? '#0A66C2' : 'transparent')"
+          x-text="tab.charAt(0).toUpperCase() + tab.slice(1)"></button>
+      </template>
+    </div>
+
+    <div x-show="activeTab === 'personal'">
+      <div style="font-size: 14px; font-weight: 700; margin-bottom: 12px; color: var(--text-color, #f2f2f2);">Personal LinkedIn Profile</div>
+      <div style="font-size: 12px; color: var(--text-secondary, #b8b8b8); margin-bottom: 12px;">Use this profile for posting under your own LinkedIn identity.</div>
+
+      <div style="margin-bottom: 14px;">
+        <div style="font-size: 13px; font-weight: 600; margin-bottom: 4px;">Access Token</div>
+        <input type="password" x-model="config.profiles.personal_app.linkedin.access_token" placeholder="Enter personal LinkedIn access token" style="width: 100%; padding: 8px 10px; color: var(--text-color, #f3f3f3); background: var(--bg-secondary, #1f1f1f); border: 1px solid var(--border-color, #4a4a4a); border-radius: 6px; box-sizing: border-box;">
+      </div>
+
+      <div style="margin-bottom: 14px;">
+        <div style="font-size: 13px; font-weight: 600; margin-bottom: 4px;">Scopes</div>
+        <textarea rows="3" x-model="config.profiles.personal_app.linkedin.scopes_text" @input="config.profiles.personal_app.linkedin.scopes = config.profiles.personal_app.linkedin.scopes_text.split(',').map(s => s.trim()).filter(Boolean)" placeholder="w_member_social" style="width: 100%; padding: 8px 10px; color: var(--text-color, #f3f3f3); background: var(--bg-secondary, #1f1f1f); border: 1px solid var(--border-color, #4a4a4a); border-radius: 6px; box-sizing: border-box;"></textarea>
+      </div>
+
+      <div style="margin-bottom: 14px;">
+        <div style="font-size: 13px; font-weight: 600; margin-bottom: 4px;">Person URN</div>
+        <input type="text" x-model="config.profiles.personal_app.linkedin.person_urn" placeholder="urn:li:person:abc123" style="width: 100%; padding: 8px 10px; color: var(--text-color, #f3f3f3); background: var(--bg-secondary, #1f1f1f); border: 1px solid var(--border-color, #4a4a4a); border-radius: 6px; box-sizing: border-box;">
+      </div>
+
+      <div style="margin-bottom: 14px;">
+        <div style="font-size: 13px; font-weight: 600; margin-bottom: 4px;">Default Visibility</div>
+        <select x-model="config.profiles.personal_app.linkedin.default_visibility" style="width: 100%; padding: 8px 10px; color: var(--text-color, #f3f3f3); background: var(--bg-secondary, #1f1f1f); border: 1px solid var(--border-color, #4a4a4a); border-radius: 6px; box-sizing: border-box;">
+          <option value="PUBLIC">PUBLIC</option>
+          <option value="CONNECTIONS">CONNECTIONS</option>
+          <option value="LOGGED_IN">LOGGED_IN</option>
+        </select>
+      </div>
+
+      <div style="margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+        <div>
+          <div style="font-size: 13px; font-weight: 600; margin-bottom: 4px;">Dry Run</div>
+          <div style="font-size: 12px; color: var(--text-secondary, #b8b8b8);">Enable to prepare payloads without sending live personal posts.</div>
+        </div>
+        <label class="toggle"><input type="checkbox" x-model="config.profiles.personal_app.linkedin.dry_run"><span class="toggler"></span></label>
+      </div>
+    </div>
+
+    <div x-show="activeTab === 'organization'">
+      <div style="font-size: 14px; font-weight: 700; margin-bottom: 12px; color: var(--text-color, #f2f2f2);">Organization LinkedIn Profile</div>
+      <div style="font-size: 12px; color: var(--text-secondary, #b8b8b8); margin-bottom: 12px;">Use this profile for posting as a company or organization when your app and role allow it.</div>
+
+      <div style="margin-bottom: 14px;">
+        <div style="font-size: 13px; font-weight: 600; margin-bottom: 4px;">Access Token</div>
+        <input type="password" x-model="config.profiles.org_app.linkedin.access_token" placeholder="Enter organization LinkedIn access token" style="width: 100%; padding: 8px 10px; color: var(--text-color, #f3f3f3); background: var(--bg-secondary, #1f1f1f); border: 1px solid var(--border-color, #4a4a4a); border-radius: 6px; box-sizing: border-box;">
+      </div>
+
+      <div style="margin-bottom: 14px;">
+        <div style="font-size: 13px; font-weight: 600; margin-bottom: 4px;">Scopes</div>
+        <textarea rows="3" x-model="config.profiles.org_app.linkedin.scopes_text" @input="config.profiles.org_app.linkedin.scopes = config.profiles.org_app.linkedin.scopes_text.split(',').map(s => s.trim()).filter(Boolean)" placeholder="w_organization_social, r_organization_social" style="width: 100%; padding: 8px 10px; color: var(--text-color, #f3f3f3); background: var(--bg-secondary, #1f1f1f); border: 1px solid var(--border-color, #4a4a4a); border-radius: 6px; box-sizing: border-box;"></textarea>
+      </div>
+
+      <div style="margin-bottom: 14px;">
+        <div style="font-size: 13px; font-weight: 600; margin-bottom: 4px;">Default Organization URN</div>
+        <input type="text" x-model="config.profiles.org_app.linkedin.organization_urn" placeholder="urn:li:organization:123456" style="width: 100%; padding: 8px 10px; color: var(--text-color, #f3f3f3); background: var(--bg-secondary, #1f1f1f); border: 1px solid var(--border-color, #4a4a4a); border-radius: 6px; box-sizing: border-box;">
+      </div>
+
+      <div style="margin-bottom: 14px;">
+        <div style="font-size: 13px; font-weight: 600; margin-bottom: 4px;">Organization URNs</div>
+        <textarea rows="4" x-model="config.profiles.org_app.linkedin.organization_urns_text" @input="config.profiles.org_app.linkedin.organization_urns = config.profiles.org_app.linkedin.organization_urns_text.split('\n').map(s => s.trim()).filter(Boolean)" placeholder="urn:li:organization:123456" style="width: 100%; padding: 8px 10px; color: var(--text-color, #f3f3f3); background: var(--bg-secondary, #1f1f1f); border: 1px solid var(--border-color, #4a4a4a); border-radius: 6px; box-sizing: border-box;"></textarea>
+      </div>
+
+      <div style="margin-bottom: 14px;">
+        <div style="font-size: 13px; font-weight: 600; margin-bottom: 4px;">Default Visibility</div>
+        <select x-model="config.profiles.org_app.linkedin.default_visibility" style="width: 100%; padding: 8px 10px; color: var(--text-color, #f3f3f3); background: var(--bg-secondary, #1f1f1f); border: 1px solid var(--border-color, #4a4a4a); border-radius: 6px; box-sizing: border-box;">
+          <option value="PUBLIC">PUBLIC</option>
+          <option value="CONNECTIONS">CONNECTIONS</option>
+          <option value="LOGGED_IN">LOGGED_IN</option>
+        </select>
+      </div>
+
+      <div style="margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+        <div>
+          <div style="font-size: 13px; font-weight: 600; margin-bottom: 4px;">Dry Run</div>
+          <div style="font-size: 12px; color: var(--text-secondary, #b8b8b8);">Enable to prepare payloads without sending live organization posts.</div>
+        </div>
+        <label class="toggle"><input type="checkbox" x-model="config.profiles.org_app.linkedin.dry_run"><span class="toggler"></span></label>
+      </div>
+    </div>
+
+    <div x-show="activeTab === 'runtime'">
+      <div style="font-size: 14px; font-weight: 700; margin-bottom: 12px; color: var(--text-color, #f2f2f2);">Runtime / Shared Defaults</div>
+
+      <div style="margin-bottom: 14px;">
+        <div style="font-size: 13px; font-weight: 600; margin-bottom: 4px;">Active Profile</div>
+        <div style="font-size: 12px; color: var(--text-secondary, #b8b8b8); margin-bottom: 6px;">Runtime convenience setting. Chat tools may still route per request based on personal vs organization intent.</div>
+        <select x-model="config.active_profile" style="width: 100%; padding: 8px 10px; color: var(--text-color, #f3f3f3); background: var(--bg-secondary, #1f1f1f); border: 1px solid var(--border-color, #4a4a4a); border-radius: 6px; box-sizing: border-box;">
+          <option value="personal_app">personal_app</option>
+          <option value="org_app">org_app</option>
+        </select>
+      </div>
+
+      <div style="margin-bottom: 14px;">
+        <div style="font-size: 13px; font-weight: 600; margin-bottom: 4px;">LinkedIn Version</div>
+        <div style="font-size: 12px; color: var(--text-secondary, #b8b8b8); margin-bottom: 6px;">Applied as a shared default and mirrored into both profiles on save if needed by the config API.</div>
+        <input type="text" x-model="config.linkedin.linkedin_version" placeholder="202601" style="width: 100%; padding: 8px 10px; color: var(--text-color, #f3f3f3); background: var(--bg-secondary, #1f1f1f); border: 1px solid var(--border-color, #4a4a4a); border-radius: 6px; box-sizing: border-box;">
+      </div>
+
+      <div style="padding: 10px; background: var(--bg-secondary, #252525); border: 1px solid var(--border-color, #404040); border-radius: 6px; font-size: 12px; color: var(--text-color, #e8e8e8);">
+        <strong>Typical scopes by mode:</strong>
+        <ul style="margin: 6px 0 0 18px; padding: 0; color: var(--text-color, #e8e8e8);">
+          <li><code style="color: #d7e9ff;">w_member_social</code> for personal posting</li>
+          <li><code style="color: #d7e9ff;">r_member_social</code> for personal post reading if supported</li>
+          <li><code style="color: #d7e9ff;">w_organization_social</code> for organization posting after approval</li>
+          <li><code style="color: #d7e9ff;">r_organization_social</code> for organization post retrieval after approval</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

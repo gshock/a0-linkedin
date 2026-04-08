@@ -1,0 +1,68 @@
+enabled: false
+active_profile: personal_app
+linkedin:
+  mode: api
+  api_base_url: https://api.linkedin.com
+  access_token: ""
+  person_urn: ""
+  organization_urn: ""
+  organization_urns: []
+  scopes: []
+  default_target: personal
+  linkedin_version: "202601"
+  default_visibility: PUBLIC
+  dry_run: true
+  timeout_seconds: 30
+  user_agent: AgentZero-LinkedIn-Plugin/0.2.0
+profiles:
+  default:
+    label: Default
+    linkedin:
+      mode: api
+      api_base_url: https://api.linkedin.com
+      access_token: ""
+      person_urn: ""
+      organization_urn: ""
+      organization_urns: []
+      scopes: []
+      default_target: personal
+      linkedin_version: "202601"
+      default_visibility: PUBLIC
+      dry_run: true
+      timeout_seconds: 30
+      user_agent: AgentZero-LinkedIn-Plugin/0.2.0
+  personal_app:
+    label: Personal App
+    linkedin:
+      mode: api
+      api_base_url: https://api.linkedin.com
+      access_token: ""
+      person_urn: ""
+      organization_urn: ""
+      organization_urns: []
+      scopes:
+        - w_member_social
+      default_target: personal
+      linkedin_version: "202601"
+      default_visibility: PUBLIC
+      dry_run: true
+      timeout_seconds: 30
+      user_agent: AgentZero-LinkedIn-Plugin/0.2.0
+  org_app:
+    label: Organization App
+    linkedin:
+      mode: api
+      api_base_url: https://api.linkedin.com
+      access_token: ""
+      person_urn: ""
+      organization_urn: ""
+      organization_urns: []
+      scopes:
+        - w_organization_social
+        - r_organization_social
+      default_target: organization
+      linkedin_version: "202601"
+      default_visibility: PUBLIC
+      dry_run: true
+      timeout_seconds: 30
+      user_agent: AgentZero-LinkedIn-Plugin/0.2.0
