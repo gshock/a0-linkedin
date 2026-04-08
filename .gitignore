@@ -63,5 +63,6 @@ node_modules/
 .npm/
 
 # --- Agent Zero runtime local artifacts ---
+config.json
 .runtime_config.json
 .toggle-*

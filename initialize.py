@@ -12,7 +12,6 @@ def initialize(plugin_dir: str | None = None, **_: object) -> dict:
     required = [
         root / "plugin.yaml",
         root / "default_config.yaml",
-        root / "config.json",
     ]
     missing = [str(p) for p in required if not p.exists()]
     return {
