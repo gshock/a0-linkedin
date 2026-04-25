@@ -4,6 +4,17 @@ Manage approved LinkedIn posting workflows from Agent Zero using an API-first ap
 
 ## Overview
 
+## Release status
+
+This release is intended as **v0.1.0**.
+
+Current validation status:
+- personal posting has been tested successfully
+- organization posting support is included in the plugin design
+- organization posting verification is still pending with LinkedIn, so organization live validation is not yet complete
+
+For this release, organization-related functionality should be treated as **provisional** and dependent on LinkedIn app approval, token scopes, and organization role permissions.
+
 This plugin is designed for practical LinkedIn workflows where the user wants to:
 - check LinkedIn account and configuration readiness
 - choose between personal and organization posting targets

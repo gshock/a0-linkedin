@@ -1,7 +1,7 @@
 name: linkedin
 title: LinkedIn
-description: "Manage LinkedIn posting workflows: account checks, organization discovery, approved text posting, and recent post retrieval via API-first MVP."
-version: 0.2.1
+description: "Manage approved LinkedIn posting workflows in Agent Zero, including account checks, text post publishing, and recent post retrieval."
+version: 0.1.0
 settings_sections:
   - external
 per_project_config: true
