@@ -6,20 +6,23 @@ Manage approved LinkedIn posting workflows from Agent Zero using an API-first ap
 
 ## Release status
 
-This release is intended as **v0.1.0**.
+This release is intended as **v0.2.0**.
 
 Current validation status:
-- personal posting has been tested successfully
+- personal text posting has been tested successfully
+- personal **single-image posting** has been tested successfully
 - organization posting support is included in the plugin design
 - organization posting verification is still pending with LinkedIn, so organization live validation is not yet complete
+- organization image posting should still be treated as unverified until LinkedIn approval and org testing are complete
 
 For this release, organization-related functionality should be treated as **provisional** and dependent on LinkedIn app approval, token scopes, and organization role permissions.
 
 This plugin is designed for practical LinkedIn workflows where the user wants to:
 - check LinkedIn account and configuration readiness
 - choose between personal and organization posting targets
-- preview text posts before publishing
+- preview posts before publishing
 - publish approved text posts when the configured scopes and permissions allow it
+- publish approved **single-image posts** in personal mode
 - retrieve recent posts where supported by LinkedIn APIs and app permissions
 
 The plugin is intentionally conservative:
@@ -34,15 +37,21 @@ The plugin is intentionally conservative:
 - personal and organization routing
 - text post preview
 - text post creation
+- **single local image post preview**
+- **single local image post creation in personal mode**
 - recent post retrieval where supported by LinkedIn scopes and permissions
 - configuration through plugin settings
 
-### Not included in this version
-- media and video posting
+### Not fully included in this version
+- organization image posting validation
+- multi-image posts
+- media carousels
+- video posting
 - scheduling
 - analytics and reporting
 - comment moderation
 - browser automation fallback
+- direct HEIC upload
 
 ## LinkedIn requirements and constraints
 
@@ -135,6 +144,8 @@ Supported actions:
 Important behavior:
 - accepts both `text` and `message`
 - if `text` is missing or empty, it may fall back to `message`
+- supports optional `image_path` for single local image posts
+- supports optional `alt_text` for image posts
 - returns `resolved_profile` in results
 - should ask for clarification if personal vs organization is not specified
 
@@ -172,6 +183,24 @@ The plugin or agent should ask:
 
 It should not guess.
 
+## Image posting notes
+
+### Current image support
+This release supports:
+- one local image per post
+- supported image types: `jpg`, `jpeg`, `png`, `gif`, `webp`
+- optional `alt_text`
+
+### Current image limitations
+This release does not yet support:
+- HEIC upload
+- multiple images in one post
+- carousels
+- video upload
+- organization image posting validation
+
+If your phone photos are HEIC, convert them to `jpg` or `png` first.
+
 ## Security and approval expectations
 
 This plugin is intended for approved posting workflows.
@@ -207,6 +236,28 @@ If you need help finding the correct LinkedIn person/member identifier for perso
 }
 ```
 
+### Personal image preview
+```json
+{
+  "action": "preview",
+  "target": "personal",
+  "message": "Great connecting with everyone at last week's event.",
+  "image_path": "/full/path/to/photo.jpg",
+  "alt_text": "Photo from last week's event"
+}
+```
+
+### Personal image post creation
+```json
+{
+  "action": "create",
+  "target": "personal",
+  "message": "Great connecting with everyone at last week's event.",
+  "image_path": "/full/path/to/photo.jpg",
+  "alt_text": "Photo from last week's event"
+}
+```
+
 ### Organization preview
 ```json
 {
@@ -224,6 +275,14 @@ If you need help finding the correct LinkedIn person/member identifier for perso
 3. Preview the post if desired
 4. Create the post
 5. Verify the result on LinkedIn
+
+### Personal image posting
+1. Check `linkedin_account status`
+2. Confirm personal mode is ready
+3. Use a supported local image file
+4. Preview the image post
+5. Create the post
+6. Verify the result on LinkedIn
 
 ### Organization posting
 1. Confirm the organization token, scopes, and organization role are valid
@@ -248,6 +307,8 @@ Organization posting and reading may require:
 - sufficient organization role permissions
 - LinkedIn app approval where applicable
 
+Organization image posting should still be treated as provisional until org validation is completed.
+
 ## Troubleshooting
 
 | Problem | Meaning | Likely fix |
@@ -256,13 +317,5 @@ Organization posting and reading may require:
 | HTTP `422` on author | wrong URN type | use `urn:li:person:*` for personal author |
 | missing `r_member_social` | personal read unavailable | do not rely on personal read for MVP |
 | organization workflow unavailable | missing token, scope, URN, app approval, or role | verify configuration and LinkedIn app permissions |
+| HEIC file rejected | unsupported local image type | convert it to `jpg` or `png` first |
 | config UI looks stale | cached or outdated state | refresh the UI or reload the plugin |
-
-## Testing and development notes
-
-Included repository materials:
-- `tests/HUMAN_TEST_PLAN.md`
-- `tests/regression_test.sh`
-- `tests/smoke_examples.md`
-
-These are intended to help validate plugin behavior during development and review.

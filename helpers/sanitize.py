@@ -1,6 +1,12 @@
 """Sanitization and validation helpers for the LinkedIn plugin."""
 from __future__ import annotations
 
+from pathlib import Path
+
+
+ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
+DEFAULT_MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024
+
 
 def sanitize_text(text: str, max_length: int = 3000) -> str:
     text = (text or "").replace("\r\n", "\n").replace("\r", "\n").strip()
@@ -41,3 +47,50 @@ def validate_message(text: str, max_length: int = 3000) -> str:
     if not cleaned:
         raise ValueError("Post message must not be empty.")
     return cleaned
+
+
+def validate_image_path(
+    image_path: str | None,
+    *,
+    required: bool = False,
+    max_size_bytes: int = DEFAULT_MAX_IMAGE_SIZE_BYTES,
+    allowed_extensions: set[str] | None = None,
+) -> dict:
+    raw = (image_path or "").strip()
+    if not raw:
+        if required:
+            raise ValueError("Image file path is required.")
+        return {
+            "present": False,
+            "path": "",
+            "name": "",
+            "extension": "",
+            "size_bytes": 0,
+        }
+
+    path = Path(raw).expanduser()
+    if not path.exists():
+        raise ValueError(f"Image file not found: {path}")
+    if not path.is_file():
+        raise ValueError(f"Image path is not a file: {path}")
+
+    extension = path.suffix.lower()
+    allowed = allowed_extensions or ALLOWED_IMAGE_EXTENSIONS
+    if extension not in allowed:
+        supported = ", ".join(sorted(allowed))
+        raise ValueError(f"Unsupported image format '{extension or 'unknown'}'. Supported formats: {supported}")
+
+    size_bytes = path.stat().st_size
+    if size_bytes <= 0:
+        raise ValueError("Image file is empty.")
+    if size_bytes > max_size_bytes:
+        max_mb = max_size_bytes / (1024 * 1024)
+        raise ValueError(f"Image file is too large. Maximum size is {max_mb:.0f} MB.")
+
+    return {
+        "present": True,
+        "path": str(path),
+        "name": path.name,
+        "extension": extension,
+        "size_bytes": size_bytes,
+    }

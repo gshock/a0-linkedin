@@ -11,15 +11,25 @@ class LinkedInPost(Tool):
         if text in (None, ""):
             text = self.args.get("message", "")
 
+        image_path = self.args.get("image_path") or ""
+        alt_text = self.args.get("alt_text") or ""
+
         config_mod = importlib.import_module("usr.plugins.linkedin.helpers.config")
         config_mod = importlib.reload(config_mod)
         load_config = getattr(config_mod, "load_config")
         resolve_linkedin_config = getattr(config_mod, "resolve_linkedin_config")
 
         from usr.plugins.linkedin.helpers.linkedin_auth import LinkedInAuthError
-        from usr.plugins.linkedin.helpers.linkedin_client import LinkedInClient
+        client_mod = importlib.import_module("usr.plugins.linkedin.helpers.linkedin_client")
+        client_mod = importlib.reload(client_mod)
+        LinkedInClient = getattr(client_mod, "LinkedInClient")
         from usr.plugins.linkedin.helpers.linkedin_format import compact_post_preview
-        from usr.plugins.linkedin.helpers.sanitize import normalize_organization_urn, normalize_target, validate_message
+        from usr.plugins.linkedin.helpers.sanitize import (
+            normalize_organization_urn,
+            normalize_target,
+            validate_image_path,
+            validate_message,
+        )
 
         config = load_config()
         target = self.args.get("target")
@@ -53,12 +63,22 @@ class LinkedInPost(Tool):
                 "profiles": config.get("profiles", {}),
             }
 
+            image_info = validate_image_path(image_path, required=False)
+            has_image = bool(image_info.get("present"))
+            normalized_org_urn = normalize_organization_urn(organization_urn) if organization_urn else ""
+
             if action == "preview":
                 preview = compact_post_preview(cleaned, visibility or resolved_linkedin.get("default_visibility", "PUBLIC"))
                 preview.update({
                     "target": effective_target,
                     "resolved_profile": resolved_profile,
-                    "organization_urn": normalize_organization_urn(organization_urn) if organization_urn else "",
+                    "organization_urn": normalized_org_urn,
+                    "post_type": "image" if has_image else "text",
+                    "image_path": image_info.get("path", ""),
+                    "image_name": image_info.get("name", ""),
+                    "image_extension": image_info.get("extension", ""),
+                    "image_size_bytes": image_info.get("size_bytes", 0),
+                    "alt_text": alt_text,
                 })
                 return Response(
                     message=str({"ok": True, "action": action, "resolved_profile": resolved_profile, "preview": preview}),
@@ -72,10 +92,19 @@ class LinkedInPost(Tool):
                     target=effective_target,
                     organization_urn=organization_urn,
                     visibility=visibility,
+                    image_path=image_info.get("path", "") if has_image else None,
+                    alt_text=alt_text if has_image else None,
                 )
                 result["action"] = action
                 result["resolved_profile"] = resolved_profile
                 result["target"] = effective_target
+                result["post_type"] = "image" if has_image else "text"
+                if has_image:
+                    result["image_path"] = image_info.get("path", "")
+                    result["image_name"] = image_info.get("name", "")
+                    result["image_extension"] = image_info.get("extension", "")
+                    result["image_size_bytes"] = image_info.get("size_bytes", 0)
+                    result["alt_text"] = alt_text
                 return Response(message=str(result), break_loop=False)
 
             else:
