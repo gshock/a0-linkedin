@@ -8,6 +8,7 @@ from urllib.parse import quote
 import urllib.error
 import urllib.request
 
+from .image_convert import convert_heic_to_jpg
 from .linkedin_auth import LinkedInAuthError, LinkedInAuthHelper
 from .linkedin_format import normalize_visibility
 from .sanitize import normalize_organization_urn, sanitize_text, validate_image_path, validate_message
@@ -166,18 +167,42 @@ class LinkedInClient:
 
     def upload_image_binary(self, upload_url: str, image_path: str) -> dict:
         image_info = validate_image_path(image_path, required=True)
-        mime_type = mimetypes.guess_type(image_info["path"])[0] or "application/octet-stream"
+        upload_image = dict(image_info)
+        if image_info.get("needs_conversion"):
+            converted = convert_heic_to_jpg(image_info["path"])
+            upload_image.update({
+                "converted": True,
+                "conversion": converted,
+                "path": converted["path"],
+                "name": converted["name"],
+                "extension": converted["extension"],
+                "size_bytes": converted["size_bytes"],
+            })
+        else:
+            upload_image["converted"] = False
+        mime_type = mimetypes.guess_type(upload_image["path"])[0] or "application/octet-stream"
         if self.dry_run:
             return {
                 "ok": True,
                 "dry_run": True,
                 "upload_url": upload_url,
-                "image_path": image_info["path"],
+                "image_path": upload_image["path"],
+                "image_name": upload_image["name"],
+                "image_extension": upload_image["extension"],
                 "mime_type": mime_type,
-                "size_bytes": image_info["size_bytes"],
+                "size_bytes": upload_image["size_bytes"],
+                "converted": upload_image.get("converted", False),
+                "conversion": upload_image.get("conversion"),
                 "message": "Dry run enabled; image binary upload not sent.",
             }
-        return self._binary_upload(upload_url, image_info["path"], mime_type)
+        result = self._binary_upload(upload_url, upload_image["path"], mime_type)
+        result["converted"] = upload_image.get("converted", False)
+        result["conversion"] = upload_image.get("conversion")
+        result["image_path"] = upload_image["path"]
+        result["image_name"] = upload_image["name"]
+        result["image_extension"] = upload_image["extension"]
+        result["size_bytes"] = upload_image["size_bytes"]
+        return result
 
     def create_image_post(
         self,
@@ -247,6 +272,20 @@ class LinkedInClient:
                 "upload": upload_result,
             }
 
+        uploaded_image = dict(image_info)
+        if upload_result.get("converted") and isinstance(upload_result.get("conversion"), dict):
+            converted = upload_result["conversion"]
+            uploaded_image.update({
+                "converted": True,
+                "conversion": converted,
+                "path": converted.get("path", uploaded_image["path"]),
+                "name": converted.get("name", uploaded_image["name"]),
+                "extension": converted.get("extension", uploaded_image["extension"]),
+                "size_bytes": converted.get("size_bytes", uploaded_image["size_bytes"]),
+            })
+        else:
+            uploaded_image["converted"] = False
+
         payload = self._build_image_post_payload(
             author=author,
             text=text,
@@ -261,6 +300,7 @@ class LinkedInClient:
                 "target": resolved_target,
                 "author": author,
                 "image": image_info,
+                "uploaded_image": uploaded_image,
                 "media_urn": media_urn,
                 "registration": registration,
                 "upload": upload_result,
@@ -275,6 +315,7 @@ class LinkedInClient:
             result["target"] = resolved_target
             result["media_urn"] = media_urn
             result["image"] = image_info
+            result["uploaded_image"] = uploaded_image
         return result
 
     def create_post(

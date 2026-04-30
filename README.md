@@ -6,11 +6,12 @@ Manage approved LinkedIn posting workflows from Agent Zero using an API-first ap
 
 ## Release status
 
-This release is intended as **v0.2.0**.
+This release is intended as **v0.2.1**.
 
 Current validation status:
 - personal text posting has been tested successfully
 - personal **single-image posting** has been tested successfully
+- personal **HEIC/HEIF image posting with automatic JPG conversion** has been tested successfully
 - organization posting support is included in the plugin design
 - organization posting verification is still pending with LinkedIn, so organization live validation is not yet complete
 - organization image posting should still be treated as unverified until LinkedIn approval and org testing are complete
@@ -23,6 +24,7 @@ This plugin is designed for practical LinkedIn workflows where the user wants to
 - preview posts before publishing
 - publish approved text posts when the configured scopes and permissions allow it
 - publish approved **single-image posts** in personal mode
+- publish approved **HEIC/HEIF photos** by automatically converting them to JPG before upload
 - retrieve recent posts where supported by LinkedIn APIs and app permissions
 
 The plugin is intentionally conservative:
@@ -39,6 +41,7 @@ The plugin is intentionally conservative:
 - text post creation
 - **single local image post preview**
 - **single local image post creation in personal mode**
+- **HEIC/HEIF local image support with automatic JPG conversion in personal mode**
 - recent post retrieval where supported by LinkedIn scopes and permissions
 - configuration through plugin settings
 
@@ -51,7 +54,6 @@ The plugin is intentionally conservative:
 - analytics and reporting
 - comment moderation
 - browser automation fallback
-- direct HEIC upload
 
 ## LinkedIn requirements and constraints
 
@@ -146,6 +148,7 @@ Important behavior:
 - if `text` is missing or empty, it may fall back to `message`
 - supports optional `image_path` for single local image posts
 - supports optional `alt_text` for image posts
+- accepts HEIC/HEIF images and converts them to JPG automatically before upload
 - returns `resolved_profile` in results
 - should ask for clarification if personal vs organization is not specified
 
@@ -188,18 +191,16 @@ It should not guess.
 ### Current image support
 This release supports:
 - one local image per post
-- supported image types: `jpg`, `jpeg`, `png`, `gif`, `webp`
+- supported image types: `jpg`, `jpeg`, `png`, `gif`, `webp`, `heic`, `heif`
+- automatic HEIC/HEIF to JPG conversion before upload
 - optional `alt_text`
 
 ### Current image limitations
 This release does not yet support:
-- HEIC upload
 - multiple images in one post
 - carousels
 - video upload
 - organization image posting validation
-
-If your phone photos are HEIC, convert them to `jpg` or `png` first.
 
 ## Security and approval expectations
 
@@ -258,6 +259,17 @@ If you need help finding the correct LinkedIn person/member identifier for perso
 }
 ```
 
+### Personal HEIC image post creation
+```json
+{
+  "action": "create",
+  "target": "personal",
+  "message": "Testing HEIC support for the Agent Zero LinkedIn plugin.",
+  "image_path": "/full/path/to/photo.heic",
+  "alt_text": "Photo converted from HEIC before upload"
+}
+```
+
 ### Organization preview
 ```json
 {
@@ -281,6 +293,14 @@ If you need help finding the correct LinkedIn person/member identifier for perso
 2. Confirm personal mode is ready
 3. Use a supported local image file
 4. Preview the image post
+5. Create the post
+6. Verify the result on LinkedIn
+
+### Personal HEIC posting
+1. Check `linkedin_account status`
+2. Confirm personal mode is ready
+3. Provide a local `.heic` or `.heif` file
+4. Let the plugin convert it automatically to JPG
 5. Create the post
 6. Verify the result on LinkedIn
 
@@ -317,5 +337,5 @@ Organization image posting should still be treated as provisional until org vali
 | HTTP `422` on author | wrong URN type | use `urn:li:person:*` for personal author |
 | missing `r_member_social` | personal read unavailable | do not rely on personal read for MVP |
 | organization workflow unavailable | missing token, scope, URN, app approval, or role | verify configuration and LinkedIn app permissions |
-| HEIC file rejected | unsupported local image type | convert it to `jpg` or `png` first |
+| HEIC conversion unavailable | no local converter installed | install `libheif-examples` to provide `heif-convert` |
 | config UI looks stale | cached or outdated state | refresh the UI or reload the plugin |

@@ -4,7 +4,8 @@ from __future__ import annotations
 from pathlib import Path
 
 
-ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
+ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".heif"}
+HEIC_IMAGE_EXTENSIONS = {".heic", ".heif"}
 DEFAULT_MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024
 
 
@@ -66,6 +67,8 @@ def validate_image_path(
             "name": "",
             "extension": "",
             "size_bytes": 0,
+            "needs_conversion": False,
+            "source_extension": "",
         }
 
     path = Path(raw).expanduser()
@@ -87,10 +90,13 @@ def validate_image_path(
         max_mb = max_size_bytes / (1024 * 1024)
         raise ValueError(f"Image file is too large. Maximum size is {max_mb:.0f} MB.")
 
+    needs_conversion = extension in HEIC_IMAGE_EXTENSIONS
     return {
         "present": True,
         "path": str(path),
         "name": path.name,
         "extension": extension,
+        "source_extension": extension,
         "size_bytes": size_bytes,
+        "needs_conversion": needs_conversion,
     }
