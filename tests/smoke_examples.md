@@ -182,3 +182,40 @@ Using the wrong URN type can cause HTTP `422` validation failures.
 
 - `org_app` is under LinkedIn review
 - defer org-mode live testing until verification is complete
+
+## 12. Multi-image preview
+
+```json
+{
+  "action": "preview",
+  "target": "personal",
+  "message": "Highlights from our event.",
+  "image_paths": [
+    "/full/path/to/photo1.jpg",
+    "/full/path/to/photo2.heic"
+  ],
+  "alt_text": "Event highlights"
+}
+```
+
+### Expected
+- preview succeeds
+- response includes `post_type: images`
+- response includes `image_count: 2`
+- response indicates `needs_conversion: true` when HEIC/HEIF input is included
+
+## 13. Conflicting image input rejection
+
+```json
+{
+  "action": "create",
+  "target": "personal",
+  "message": "This should fail validation.",
+  "image_path": "/full/path/to/photo1.jpg",
+  "image_paths": ["/full/path/to/photo2.jpg"]
+}
+```
+
+### Expected
+- plugin rejects the request
+- response explains that only one of `image_path` or `image_paths` may be provided

@@ -37,7 +37,7 @@ done
 pass 'Required plugin files exist'
 
 # 2. Python syntax checks
-python -m py_compile "$HELPERS_CONFIG" "$POST_TOOL" "$READ_TOOL" "$ACCOUNT_TOOL"
+python -m py_compile "$HELPERS_CONFIG" "$PLUGIN_DIR/helpers/sanitize.py" "$PLUGIN_DIR/helpers/linkedin_client.py" "$POST_TOOL" "$READ_TOOL" "$ACCOUNT_TOOL"
 pass 'Core helper/tool files compile'
 
 # 3. Routing helper presence
@@ -50,6 +50,10 @@ require_grep 'text = self.args.get\("text"\)' "$POST_TOOL" 'linkedin_post reads 
 require_grep 'self.args.get\("message", ""\)' "$POST_TOOL" 'linkedin_post falls back to message'
 require_grep 'resolved_profile' "$POST_TOOL" 'linkedin_post returns resolved_profile metadata'
 require_grep 'needs_clarification' "$POST_TOOL" 'linkedin_post supports clarification-needed responses'
+require_grep 'image_paths = self.args.get\("image_paths"\)' "$POST_TOOL" 'linkedin_post accepts image_paths'
+require_grep "Provide either 'image_path' or 'image_paths', not both." "$POST_TOOL" 'linkedin_post rejects conflicting image inputs'
+require_grep 'def create_multi_image_post\(' "$PLUGIN_DIR/helpers/linkedin_client.py" 'linkedin_client multi-image create helper present'
+require_grep 'validate_image_paths' "$PLUGIN_DIR/helpers/sanitize.py" 'sanitize helper validates multiple image paths'
 
 # 5. linkedin_read routing markers
 require_grep 'resolve_linkedin_config' "$READ_TOOL" 'linkedin_read uses per-call routing helper'

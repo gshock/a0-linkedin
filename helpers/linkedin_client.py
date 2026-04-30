@@ -11,7 +11,13 @@ import urllib.request
 from .image_convert import convert_heic_to_jpg
 from .linkedin_auth import LinkedInAuthError, LinkedInAuthHelper
 from .linkedin_format import normalize_visibility
-from .sanitize import normalize_organization_urn, sanitize_text, validate_image_path, validate_message
+from .sanitize import (
+    normalize_organization_urn,
+    sanitize_text,
+    validate_image_path,
+    validate_image_paths,
+    validate_message,
+)
 
 
 class LinkedInClient:
@@ -21,7 +27,7 @@ class LinkedInClient:
         self.auth = LinkedInAuthHelper(self.config)
         self.base_url = str(self.linkedin.get("api_base_url") or "https://api.linkedin.com").rstrip("/")
         self.timeout = int(self.linkedin.get("timeout_seconds") or 30)
-        self.user_agent = self.linkedin.get("user_agent") or "AgentZero-LinkedIn-Plugin/0.2.0"
+        self.user_agent = self.linkedin.get("user_agent") or "AgentZero-LinkedIn-Plugin/0.2.2"
         self.dry_run = bool(self.linkedin.get("dry_run", True))
 
     def _headers(self, include_json: bool = True, extra: dict | None = None) -> dict:
@@ -108,8 +114,15 @@ class LinkedInClient:
         }
         if alt_text:
             media_content["altText"] = sanitize_text(alt_text)
+        payload["content"] = {"media": media_content}
+        return payload
+
+    def _build_multi_image_post_payload(self, author: str, text: str, media_items: list[dict], visibility: str | None = None, alt_text: str | None = None) -> dict:
+        payload = self._build_text_post_payload(author=author, text=text, visibility=visibility)
         payload["content"] = {
-            "media": media_content,
+            "multiImage": {
+                "images": media_items,
+            }
         }
         return payload
 
@@ -147,11 +160,7 @@ class LinkedInClient:
 
     def register_image_upload(self, author: str) -> dict:
         self.auth.require_token()
-        payload = {
-            "initializeUploadRequest": {
-                "owner": author,
-            }
-        }
+        payload = {"initializeUploadRequest": {"owner": author}}
         if self.dry_run:
             return {
                 "ok": True,
@@ -180,6 +189,7 @@ class LinkedInClient:
             })
         else:
             upload_image["converted"] = False
+
         mime_type = mimetypes.guess_type(upload_image["path"])[0] or "application/octet-stream"
         if self.dry_run:
             return {
@@ -195,6 +205,7 @@ class LinkedInClient:
                 "conversion": upload_image.get("conversion"),
                 "message": "Dry run enabled; image binary upload not sent.",
             }
+
         result = self._binary_upload(upload_url, upload_image["path"], mime_type)
         result["converted"] = upload_image.get("converted", False)
         result["conversion"] = upload_image.get("conversion")
@@ -203,6 +214,16 @@ class LinkedInClient:
         result["image_extension"] = upload_image["extension"]
         result["size_bytes"] = upload_image["size_bytes"]
         return result
+
+    def _extract_upload_targets(self, registration: dict) -> tuple[str, str] | tuple[None, None]:
+        reg_data = registration.get("data", {}) if isinstance(registration.get("data"), dict) else {}
+        upload_url = registration.get("uploadUrl") or reg_data.get("uploadUrl")
+        media_urn = registration.get("image") or reg_data.get("image") or reg_data.get("value", {}).get("image")
+        if not upload_url:
+            upload_url = reg_data.get("value", {}).get("uploadUrl") or reg_data.get("uploadMechanism", {}).get("com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest", {}).get("uploadUrl")
+        if not media_urn:
+            media_urn = reg_data.get("value", {}).get("image") or reg_data.get("image")
+        return upload_url, media_urn
 
     def create_image_post(
         self,
@@ -238,16 +259,7 @@ class LinkedInClient:
             registration["message"] = registration.get("message") or "LinkedIn image upload registration failed."
             return registration
 
-        reg_data = registration.get("data", {}) if isinstance(registration.get("data"), dict) else {}
-        upload_url = registration.get("uploadUrl") or reg_data.get("uploadUrl") or reg_data.get("uploadUrlExpiresAt") and reg_data.get("uploadUrl")
-        media_urn = registration.get("image") or reg_data.get("image") or reg_data.get("value", {}).get("image")
-
-        # Support nested response forms if LinkedIn wraps under value
-        if not upload_url:
-            upload_url = reg_data.get("value", {}).get("uploadUrl") or reg_data.get("uploadMechanism", {}).get("com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest", {}).get("uploadUrl")
-        if not media_urn:
-            media_urn = reg_data.get("value", {}).get("image") or reg_data.get("image")
-
+        upload_url, media_urn = self._extract_upload_targets(registration)
         if not upload_url:
             return {
                 "ok": False,
@@ -286,13 +298,7 @@ class LinkedInClient:
         else:
             uploaded_image["converted"] = False
 
-        payload = self._build_image_post_payload(
-            author=author,
-            text=text,
-            media_urn=media_urn,
-            visibility=visibility,
-            alt_text=alt_text,
-        )
+        payload = self._build_image_post_payload(author=author, text=text, media_urn=media_urn, visibility=visibility, alt_text=alt_text)
         if self.dry_run:
             return {
                 "ok": True,
@@ -318,6 +324,142 @@ class LinkedInClient:
             result["uploaded_image"] = uploaded_image
         return result
 
+    def create_multi_image_post(
+        self,
+        text: str,
+        image_paths: list[str],
+        target: str | None = None,
+        organization_urn: str | None = None,
+        visibility: str | None = None,
+        alt_text: str | None = None,
+    ) -> dict:
+        validate_message(text)
+        images_info = validate_image_paths(image_paths, required=True)
+        resolved_target = str(target or self.linkedin.get("default_target") or "personal").strip().lower()
+        scope = "w_organization_social" if resolved_target == "organization" else "w_member_social"
+        self.auth.require_scope(scope)
+        try:
+            author = self._author_for_target(target=resolved_target, organization_urn=organization_urn)
+        except LinkedInAuthError as exc:
+            if resolved_target == "personal":
+                return {
+                    "ok": False,
+                    "target": resolved_target,
+                    "dry_run": self.dry_run,
+                    "pending_person_urn": True,
+                    "message": str(exc),
+                    "next_step": "Configure linkedin.person_urn as urn:li:person:<id> before attempting live personal posting.",
+                    "images": images_info,
+                }
+            raise
+
+        prepared_images = []
+        registrations = []
+        uploads = []
+        media_items = []
+
+        for item in images_info.get("items", []):
+            registration = self.register_image_upload(author)
+            registrations.append(registration)
+            if not registration.get("ok"):
+                registration["message"] = registration.get("message") or "LinkedIn image upload registration failed."
+                return {
+                    "ok": False,
+                    "target": resolved_target,
+                    "author": author,
+                    "images": images_info,
+                    "count": images_info.get("count", 0),
+                    "registration": registration,
+                    "registrations": registrations,
+                    "uploads": uploads,
+                    "message": "LinkedIn multi-image upload registration failed.",
+                }
+
+            upload_url, media_urn = self._extract_upload_targets(registration)
+            if not upload_url or not media_urn:
+                return {
+                    "ok": False,
+                    "target": resolved_target,
+                    "author": author,
+                    "images": images_info,
+                    "count": images_info.get("count", 0),
+                    "registration": registration,
+                    "registrations": registrations,
+                    "uploads": uploads,
+                    "message": "LinkedIn image upload registration succeeded but did not return a complete upload target.",
+                }
+
+            upload_result = self.upload_image_binary(upload_url, item["path"])
+            uploads.append(upload_result)
+            if not upload_result.get("ok"):
+                return {
+                    "ok": False,
+                    "target": resolved_target,
+                    "author": author,
+                    "images": images_info,
+                    "count": images_info.get("count", 0),
+                    "registration": registration,
+                    "registrations": registrations,
+                    "upload": upload_result,
+                    "uploads": uploads,
+                    "message": "LinkedIn multi-image binary upload failed.",
+                }
+
+            uploaded_image = dict(item)
+            if upload_result.get("converted") and isinstance(upload_result.get("conversion"), dict):
+                converted = upload_result["conversion"]
+                uploaded_image.update({
+                    "converted": True,
+                    "conversion": converted,
+                    "path": converted.get("path", uploaded_image["path"]),
+                    "name": converted.get("name", uploaded_image["name"]),
+                    "extension": converted.get("extension", uploaded_image["extension"]),
+                    "size_bytes": converted.get("size_bytes", uploaded_image["size_bytes"]),
+                })
+            else:
+                uploaded_image["converted"] = False
+
+            prepared_images.append(uploaded_image)
+            media_item = {"id": media_urn}
+            if alt_text:
+                media_item["altText"] = sanitize_text(alt_text)
+            media_items.append(media_item)
+
+        payload = self._build_multi_image_post_payload(
+            author=author,
+            text=text,
+            media_items=media_items,
+            visibility=visibility,
+            alt_text=alt_text,
+        )
+
+        if self.dry_run:
+            return {
+                "ok": True,
+                "dry_run": True,
+                "target": resolved_target,
+                "author": author,
+                "images": images_info,
+                "uploaded_images": prepared_images,
+                "count": images_info.get("count", 0),
+                "registrations": registrations,
+                "uploads": uploads,
+                "media_items": media_items,
+                "endpoint": f"{self.base_url}/rest/posts",
+                "payload": payload,
+                "message": "Dry run enabled; multi-image post payload prepared but not sent.",
+            }
+
+        result = self._request("POST", "/rest/posts", payload=payload)
+        if result.get("ok"):
+            result["author"] = author
+            result["target"] = resolved_target
+            result["images"] = images_info
+            result["uploaded_images"] = prepared_images
+            result["count"] = images_info.get("count", 0)
+            result["media_items"] = media_items
+        return result
+
     def create_post(
         self,
         text: str,
@@ -325,8 +467,20 @@ class LinkedInClient:
         organization_urn: str | None = None,
         visibility: str | None = None,
         image_path: str | None = None,
+        image_paths: list[str] | None = None,
         alt_text: str | None = None,
     ) -> dict:
+        if image_path and image_paths:
+            return {"ok": False, "message": "Provide either image_path or image_paths, not both."}
+        if image_paths:
+            return self.create_multi_image_post(
+                text=text,
+                image_paths=image_paths,
+                target=target,
+                organization_urn=organization_urn,
+                visibility=visibility,
+                alt_text=alt_text,
+            )
         if image_path:
             return self.create_image_post(
                 text=text,
@@ -336,6 +490,7 @@ class LinkedInClient:
                 visibility=visibility,
                 alt_text=alt_text,
             )
+
         validate_message(text)
         resolved_target = str(target or self.linkedin.get("default_target") or "personal").strip().lower()
         scope = "w_organization_social" if resolved_target == "organization" else "w_member_social"
@@ -356,6 +511,7 @@ class LinkedInClient:
                     "payload": payload if self.dry_run else None,
                 }
             raise
+
         if self.dry_run:
             return {
                 "ok": True,
@@ -366,6 +522,7 @@ class LinkedInClient:
                 "payload": payload,
                 "message": "Dry run enabled; post payload prepared but not sent.",
             }
+
         result = self._request("POST", "/rest/posts", payload=payload)
         if result.get("ok"):
             result["author"] = author

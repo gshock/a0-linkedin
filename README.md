@@ -6,14 +6,17 @@ Manage approved LinkedIn posting workflows from Agent Zero using an API-first ap
 
 ## Release status
 
-This release is intended as **v0.2.1**.
+This release is intended as **v0.2.2**.
 
 Current validation status:
 - personal text posting has been tested successfully
 - personal **single-image posting** has been tested successfully
 - personal **HEIC/HEIF image posting with automatic JPG conversion** has been tested successfully
+- personal **multi-image posting** is now included for local images, including mixed JPG/PNG/HEIC/HEIF inputs
+- personal **live 2-image posting** has been validated successfully with HTTP `201` using `image_paths`
 - organization posting support is included in the plugin design
 - organization posting verification is still pending with LinkedIn, so organization live validation is not yet complete
+- **org_app is under LinkedIn review** for broader organization validation workflows
 - organization image posting should still be treated as unverified until LinkedIn approval and org testing are complete
 
 For this release, organization-related functionality should be treated as **provisional** and dependent on LinkedIn app approval, token scopes, and organization role permissions.
@@ -24,6 +27,7 @@ This plugin is designed for practical LinkedIn workflows where the user wants to
 - preview posts before publishing
 - publish approved text posts when the configured scopes and permissions allow it
 - publish approved **single-image posts** in personal mode
+- publish approved **multi-image posts** using `image_paths` for local images
 - publish approved **HEIC/HEIF photos** by automatically converting them to JPG before upload
 - retrieve recent posts where supported by LinkedIn APIs and app permissions
 
@@ -41,13 +45,14 @@ The plugin is intentionally conservative:
 - text post creation
 - **single local image post preview**
 - **single local image post creation in personal mode**
+- **multi-image local post preview**
+- **multi-image local post creation in personal mode**
 - **HEIC/HEIF local image support with automatic JPG conversion in personal mode**
 - recent post retrieval where supported by LinkedIn scopes and permissions
 - configuration through plugin settings
 
 ### Not fully included in this version
 - organization image posting validation
-- multi-image posts
 - media carousels
 - video posting
 - scheduling
@@ -190,14 +195,15 @@ It should not guess.
 
 ### Current image support
 This release supports:
-- one local image per post
+- one or more local images per post
 - supported image types: `jpg`, `jpeg`, `png`, `gif`, `webp`, `heic`, `heif`
 - automatic HEIC/HEIF to JPG conversion before upload
 - optional `alt_text`
+- `image_path` for a single image
+- `image_paths` for multi-image posts
 
 ### Current image limitations
 This release does not yet support:
-- multiple images in one post
 - carousels
 - video upload
 - organization image posting validation
@@ -256,6 +262,34 @@ If you need help finding the correct LinkedIn person/member identifier for perso
   "message": "Great connecting with everyone at last week's event.",
   "image_path": "/full/path/to/photo.jpg",
   "alt_text": "Photo from last week's event"
+}
+```
+
+### Personal multi-image preview
+```json
+{
+  "action": "preview",
+  "target": "personal",
+  "message": "Scenes from our team offsite.",
+  "image_paths": [
+    "/full/path/to/photo1.jpg",
+    "/full/path/to/photo2.heic"
+  ],
+  "alt_text": "Photos from our team offsite"
+}
+```
+
+### Personal multi-image post creation
+```json
+{
+  "action": "create",
+  "target": "personal",
+  "message": "Scenes from our team offsite.",
+  "image_paths": [
+    "/full/path/to/photo1.jpg",
+    "/full/path/to/photo2.heic"
+  ],
+  "alt_text": "Photos from our team offsite"
 }
 ```
 

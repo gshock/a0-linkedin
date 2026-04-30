@@ -7,6 +7,7 @@ from pathlib import Path
 ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".heif"}
 HEIC_IMAGE_EXTENSIONS = {".heic", ".heif"}
 DEFAULT_MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024
+DEFAULT_MAX_IMAGE_COUNT = 9
 
 
 def sanitize_text(text: str, max_length: int = 3000) -> str:
@@ -99,4 +100,46 @@ def validate_image_path(
         "source_extension": extension,
         "size_bytes": size_bytes,
         "needs_conversion": needs_conversion,
+    }
+
+
+def validate_image_paths(
+    image_paths: list[str] | tuple[str, ...] | None,
+    *,
+    required: bool = False,
+    max_count: int = DEFAULT_MAX_IMAGE_COUNT,
+    max_size_bytes: int = DEFAULT_MAX_IMAGE_SIZE_BYTES,
+    allowed_extensions: set[str] | None = None,
+) -> dict:
+    paths = list(image_paths or [])
+    normalized = [str(p).strip() for p in paths if str(p).strip()]
+
+    if not normalized:
+        if required:
+            raise ValueError("At least one image file path is required.")
+        return {
+            "present": False,
+            "count": 0,
+            "items": [],
+            "needs_conversion": False,
+        }
+
+    if len(normalized) > max_count:
+        raise ValueError(f"Too many images provided. Maximum supported image count is {max_count}.")
+
+    items = [
+        validate_image_path(
+            path,
+            required=True,
+            max_size_bytes=max_size_bytes,
+            allowed_extensions=allowed_extensions,
+        )
+        for path in normalized
+    ]
+
+    return {
+        "present": True,
+        "count": len(items),
+        "items": items,
+        "needs_conversion": any(item.get("needs_conversion") for item in items),
     }

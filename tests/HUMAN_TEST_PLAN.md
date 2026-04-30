@@ -7,6 +7,8 @@ This plan verifies the current API-first LinkedIn plugin behavior in Agent Zero.
 ### In scope now
 - personal posting
 - personal preview vs live create behavior
+- personal single-image posting
+- personal multi-image posting
 - dual-profile config UI behavior
 - dry_run toggle behavior
 - personal vs organization routing behavior
@@ -296,3 +298,38 @@ The current plugin state should be considered healthy if all of the following ar
 
 ### Intentionally deferred
 - org-mode live validation until LinkedIn review is complete
+
+## Test 13: Personal multi-image preview and create
+
+### Goal
+Verify multi-image preview and live create work for personal mode.
+
+### Steps
+1. Run `linkedin_post` preview with:
+   - `target: personal`
+   - approved text in `message`
+   - `image_paths` containing 2 local images
+2. Confirm the preview shows multi-image metadata
+3. Disable personal `dry_run`
+4. Run `linkedin_post` create with the same inputs
+5. Check LinkedIn
+6. Delete the temporary test post manually after verification
+
+### Expected result
+- preview succeeds
+- preview reports `post_type = images`
+- create succeeds when personal mode is ready
+- mixed JPG + HEIC input should also work when conversion tools are available
+
+## Test 14: Conflicting image input validation
+
+### Goal
+Verify the tool rejects requests that provide both `image_path` and `image_paths`.
+
+### Steps
+1. Run `linkedin_post` with both `image_path` and `image_paths`
+2. Review output
+
+### Expected result
+- plugin returns a validation error
+- plugin explains that only one of the image input forms can be used
