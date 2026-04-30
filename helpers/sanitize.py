@@ -7,7 +7,7 @@ from pathlib import Path
 ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".heif"}
 HEIC_IMAGE_EXTENSIONS = {".heic", ".heif"}
 DEFAULT_MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024
-DEFAULT_MAX_IMAGE_COUNT = 9
+DEFAULT_MAX_IMAGE_COUNT = 15
 
 
 def sanitize_text(text: str, max_length: int = 3000) -> str:

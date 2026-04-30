@@ -6,7 +6,7 @@ Manage approved LinkedIn posting workflows from Agent Zero using an API-first ap
 
 ## Release status
 
-This release is intended as **v0.2.2**.
+This release is intended as **v0.2.3**.
 
 Current validation status:
 - personal text posting has been tested successfully
@@ -196,6 +196,7 @@ It should not guess.
 ### Current image support
 This release supports:
 - one or more local images per post
+- up to **15 images** in a single post
 - supported image types: `jpg`, `jpeg`, `png`, `gif`, `webp`, `heic`, `heif`
 - automatic HEIC/HEIF to JPG conversion before upload
 - optional `alt_text`

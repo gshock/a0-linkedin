@@ -27,7 +27,7 @@ class LinkedInClient:
         self.auth = LinkedInAuthHelper(self.config)
         self.base_url = str(self.linkedin.get("api_base_url") or "https://api.linkedin.com").rstrip("/")
         self.timeout = int(self.linkedin.get("timeout_seconds") or 30)
-        self.user_agent = self.linkedin.get("user_agent") or "AgentZero-LinkedIn-Plugin/0.2.2"
+        self.user_agent = self.linkedin.get("user_agent") or "AgentZero-LinkedIn-Plugin/0.2.3"
         self.dry_run = bool(self.linkedin.get("dry_run", True))
 
     def _headers(self, include_json: bool = True, extra: dict | None = None) -> dict:
