@@ -27,7 +27,7 @@ class LinkedInClient:
         self.auth = LinkedInAuthHelper(self.config)
         self.base_url = str(self.linkedin.get("api_base_url") or "https://api.linkedin.com").rstrip("/")
         self.timeout = int(self.linkedin.get("timeout_seconds") or 30)
-        self.user_agent = self.linkedin.get("user_agent") or "AgentZero-LinkedIn-Plugin/0.2.3"
+        self.user_agent = self.linkedin.get("user_agent") or "AgentZero-LinkedIn-Plugin/0.3.0"
         self.dry_run = bool(self.linkedin.get("dry_run", True))
 
     def _headers(self, include_json: bool = True, extra: dict | None = None) -> dict:
@@ -130,9 +130,51 @@ class LinkedInClient:
         auth = self.auth.get_auth_state()
         return {"ok": True, "auth": auth}
 
-    def discover_organizations(self) -> dict:
+    def get_member_urn(self) -> dict:
+        """Resolve the authenticated member's `urn:li:person:<id>` via /v2/userinfo.
+
+        Requires the OpenID Connect `openid` (and usually `profile`) scope.
+        The access token is never echoed back in the response.
+        """
         self.auth.require_token()
-        if self.dry_run:
+        result = self._request("GET", "/v2/userinfo", payload=None)
+        if not result.get("ok"):
+            return {
+                "ok": False,
+                "status": result.get("status"),
+                "error": result.get("error"),
+                "hint": (
+                    "LinkedIn /v2/userinfo needs the openid scope on the token. "
+                    "Add openid profile to the authorization request and re-run."
+                )
+                if result.get("status") in (401, 403)
+                else "",
+            }
+        data = result.get("data") or {}
+        sub = str(data.get("sub") or "").strip()
+        if not sub:
+            return {
+                "ok": False,
+                "status": result.get("status"),
+                "error": {"message": "LinkedIn userinfo response had no 'sub' member id."},
+            }
+        member_urn = sub if sub.startswith("urn:li:person:") else f"urn:li:person:{sub}"
+        return {
+            "ok": True,
+            "status": result.get("status"),
+            "member_urn": member_urn,
+            "name": str(data.get("name") or "").strip(),
+            "email": str(data.get("email") or "").strip(),
+        }
+
+    def discover_organizations(self, force_live: bool = False) -> dict:
+        """List organization pages the token's member can administer.
+
+        `force_live` skips the dry-run short circuit so the settings UI can
+        always query LinkedIn while a URN is being discovered.
+        """
+        self.auth.require_token()
+        if self.dry_run and not force_live:
             configured = self.linkedin.get("organization_urns") or []
             fallback = [self.linkedin.get("organization_urn")] if self.linkedin.get("organization_urn") else []
             items = [item for item in configured or fallback if item]
@@ -142,9 +184,22 @@ class LinkedInClient:
                 "organizations": [{"organization": org, "localizedName": "Configured organization", "role": "UNKNOWN"} for org in items],
                 "message": "Dry run mode enabled; returning configured organization targets only.",
             }
-        query = "?q=roleAssignee&projection=(elements*(organization~(localizedName,id),role,organization))"
+        # LinkedIn rejects the legacy `projection` parameter on /rest endpoints
+        # (HTTP 400 ILLEGAL_ARGUMENT), so the query stays plain.
+        query = "?q=roleAssignee"
         result = self._request("GET", "/rest/organizationAcls", payload=None, query=query)
         if not result.get("ok"):
+            error = result.get("error") if isinstance(result.get("error"), dict) else {}
+            message = str(error.get("message") or "")
+            if result.get("status") == 403 and "organizationacls" in message.lower():
+                result = dict(result)
+                result["hint"] = (
+                    "Listing the pages a member administers needs the Organization Access "
+                    "Control scope rw_organization_admin, which this token does not have. "
+                    "Either request 'Organization Access Control' in the LinkedIn developer "
+                    "portal and reconnect with the rw_organization_admin scope, or paste the "
+                    "organization URN manually (it appears in the page's LinkedIn admin URL)."
+                )
             return result
         organizations = []
         for item in result.get("data", {}).get("elements", []):

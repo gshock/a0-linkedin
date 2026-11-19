@@ -30,6 +30,8 @@ CONFIG_SOURCE_ENV = "LINKEDIN_CONFIG_SOURCE"
 DEFAULT_LINKEDIN = {
     "mode": "api",
     "api_base_url": "https://api.linkedin.com",
+    "client_id": "",
+    "client_secret": "",
     "access_token": "",
     "person_urn": "",
     "organization_urn": "",
@@ -40,7 +42,7 @@ DEFAULT_LINKEDIN = {
     "default_visibility": "PUBLIC",
     "dry_run": True,
     "timeout_seconds": 30,
-    "user_agent": "AgentZero-LinkedIn-Plugin/0.2.0",
+    "user_agent": "AgentZero-LinkedIn-Plugin/0.3.0",
 }
 # Profiles are intentionally empty here: the accounts shipped in
 # default_config.yaml are the only seed. A phantom 'default' account would

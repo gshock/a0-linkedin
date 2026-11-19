@@ -35,7 +35,10 @@ profiles:
       organization_urn: ""
       organization_urns: []
       scopes:
+        - openid
+        - profile
         - w_member_social
+        - r_member_social
       default_target: personal
       linkedin_version: "202601"
       default_visibility: PUBLIC
@@ -52,7 +55,10 @@ profiles:
       organization_urn: ""
       organization_urns: []
       scopes:
+        - openid
+        - profile
         - w_member_social
+        - r_member_social
       default_target: personal
       linkedin_version: "202601"
       default_visibility: PUBLIC
@@ -69,8 +75,9 @@ profiles:
       organization_urn: ""
       organization_urns: []
       scopes:
-        - w_organization_social
         - r_organization_social
+        - w_organization_social
+        - rw_organization_admin
       default_target: organization
       linkedin_version: "202601"
       default_visibility: PUBLIC

@@ -94,6 +94,32 @@ for action_name in account_save account_delete account_set_active; do
 done
 require_grep 'def _sync_shared_defaults\(' "$API_FILE" 'config API has safe shared-default sync'
 
+# 5b. URN discovery: HTTP entry point, action, and settings-UI buttons
+require_grep 'async def process\(self, input: dict' "$API_FILE" 'config API exposes an HTTP process() entry point'
+require_grep 'if action == "discover"' "$API_FILE" 'config API supports discover action'
+require_grep 'def _discover\(' "$API_FILE" 'config API has a discover implementation'
+require_grep 'def get_member_urn\(' "$PLUGIN_DIR/helpers/linkedin_client.py" 'client resolves the member URN via userinfo'
+require_grep '/v2/userinfo' "$PLUGIN_DIR/helpers/linkedin_client.py" 'client calls the userinfo endpoint'
+require_grep "discover\('personal'\)" "$PLUGIN_DIR/webui/config.html" 'config UI has a person URN discovery button'
+require_grep "discover\('organization'\)" "$PLUGIN_DIR/webui/config.html" 'config UI has an organization URN discovery button'
+require_grep 'callJsonApi' "$PLUGIN_DIR/webui/config.html" 'config UI calls the plugin API'
+
+# 5c. OAuth browser flow: callback handler, state nonce, connect button
+OAUTH_CALLBACK="$PLUGIN_DIR/api/linkedin_oauth_callback.py"
+OAUTH_HELPER="$PLUGIN_DIR/helpers/linkedin_oauth.py"
+[ -f "$OAUTH_CALLBACK" ] || fail "Required file missing: $OAUTH_CALLBACK"
+[ -f "$OAUTH_HELPER" ] || fail "Required file missing: $OAUTH_HELPER"
+require_grep 'return \["GET"\]' "$OAUTH_CALLBACK" 'OAuth callback accepts browser GET redirects'
+require_grep 'def requires_csrf' "$OAUTH_CALLBACK" 'OAuth callback declares its CSRF policy'
+require_grep 'consume_state' "$OAUTH_CALLBACK" 'OAuth callback validates the state nonce'
+require_grep 'exchange_code' "$OAUTH_CALLBACK" 'OAuth callback exchanges the code for a token'
+require_grep 'def create_state' "$OAUTH_HELPER" 'OAuth helper issues single-use state'
+require_grep 'def consume_state' "$OAUTH_HELPER" 'OAuth helper consumes state once'
+require_grep 'oauth/v2/accessToken' "$OAUTH_HELPER" 'OAuth helper calls the LinkedIn token endpoint'
+require_grep 'if action == "oauth_start"' "$API_FILE" 'config API supports oauth_start'
+require_grep "oauthConnect\(\)" "$PLUGIN_DIR/webui/config.html" 'config UI has a Connect account button'
+require_grep 'client_secret' "$PLUGIN_DIR/webui/config.html" 'config UI collects app credentials'
+
 # 6. Functional multi-account behaviour (temporary runtime config)
 cd "$PLUGIN_DIR"
 "$PYTHON_BIN" - <<'PY'
@@ -207,8 +233,7 @@ import json
 import sys
 from pathlib import Path
 
-sys.path.insert(0, '/a0/usr/plugins/linkedin')
-sys.path.insert(0, '/a0/usr/plugins/linkedin/api')
+sys.path.insert(0, '/a0')
 
 import importlib.util
 spec = importlib.util.spec_from_file_location(
@@ -290,6 +315,80 @@ assert 'newapp' not in saved['profiles']
 print('OK')
 PY
 pass 'Config API account CRUD, masking preservation, and isolation verified'
+
+# 7b. URN discovery resolves identifiers from an unsaved form token
+"$PYTHON_BIN" - <<'PY'
+import asyncio
+import importlib.util
+import json
+import sys
+from pathlib import Path
+
+sys.path.insert(0, '/a0')
+
+# Patch the exact module the API imports before it loads, otherwise a second
+# module instance would still hit the real network.
+from usr.plugins.linkedin.helpers import linkedin_client as client_mod
+
+seen = {}
+
+def fake_request(self, method, path, payload=None, query=""):
+    seen[path] = seen.get(path, 0) + 1
+    if path == '/v2/userinfo':
+        return {'ok': True, 'status': 200, 'data': {'sub': 'abc123', 'name': 'Test Member'}}
+    if path == '/rest/organizationAcls':
+        return {'ok': True, 'status': 200, 'data': {'elements': [
+            {'organization': 'urn:li:organization:111', 'role': 'ADMIN',
+             'organization~': {'id': 111, 'localizedName': 'JustLinks'}},
+            {'organization': 'urn:li:organization:222', 'role': 'ADMIN',
+             'organization~': {'id': 222, 'localizedName': 'MyResumator'}},
+        ]}}
+    return {'ok': False, 'status': 404, 'error': {'message': 'unexpected ' + path}}
+
+client_mod.LinkedInClient._request = fake_request
+
+spec = importlib.util.spec_from_file_location(
+    'linkedin_config_api', '/a0/usr/plugins/linkedin/api/linkedin_config_api.py'
+)
+api_mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(api_mod)
+api = api_mod.LinkedInConfigApi()
+
+person = asyncio.run(api.process({
+    'action': 'discover', 'name': 'justlinks', 'target': 'personal',
+    'profile': {'linkedin': {'access_token': 'form-token-live'}},
+}))
+assert person['ok'] is True, person
+assert person['person_urn'] == 'urn:li:person:abc123', person
+assert 'form-token-live' not in json.dumps(person), 'token must never be echoed'
+
+orgs = asyncio.run(api.process({
+    'action': 'discover', 'name': 'myresumator_biz', 'target': 'organization',
+    'profile': {'linkedin': {'access_token': 'form-token-live'}},
+}))
+assert orgs['ok'] is True, orgs
+assert orgs['organization_urns'] == ['urn:li:organization:111', 'urn:li:organization:222'], orgs
+assert 'form-token-live' not in json.dumps(orgs), 'token must never be echoed'
+
+# a masked preview saved from an earlier session must never be sent to LinkedIn
+seen.clear()
+masked = asyncio.run(api.process({
+    'action': 'discover', 'name': 'justlinks', 'target': 'personal',
+    'profile': {'linkedin': {'access_token': '****************live'}},
+}))
+assert masked['ok'] is True, masked
+assert seen.get('/v2/userinfo') == 1, 'stored token should be used when the form token is masked'
+
+# no token at all is a clear refusal, not a network call
+seen.clear()
+missing = asyncio.run(api.process({'action': 'discover', 'name': 'empty_account', 'target': 'personal'}))
+assert missing['ok'] is False, missing
+assert 'token' in missing['message'].lower(), missing
+assert not seen, 'no request should be made without a token'
+
+print('OK')
+PY
+pass 'URN discovery resolves identifiers from an unsaved token and never echoes it'
 
 # 8. Docs still describe the account model
 require_grep 'account' "$README" 'README documents the account model'

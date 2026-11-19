@@ -6,18 +6,31 @@ Manage approved LinkedIn posting workflows from Agent Zero using an API-first ap
 
 ## Release status
 
-This release is intended as **v0.3.0**, which adds multi-account support.
+**v0.3.0** adds multi-account support, the in-browser OAuth connect flow, and
+verified organization posting.
 
-Current validation status:
-- personal text posting has been tested successfully
-- personal **single-image posting** has been tested successfully
-- personal **HEIC/HEIF image posting with automatic JPG conversion** has been tested successfully
-- personal **multi-image posting** is now included for local images, including mixed JPG/PNG/HEIC/HEIF inputs
-- personal **live 2-image posting** has been validated successfully with HTTP `201` using `image_paths`
-- organization posting support is included in the plugin design
-- organization posting verification is still pending with LinkedIn, so organization live validation is not yet complete
-- **organization app access is under LinkedIn review** for broader organization 
-  validation workflows
+### Verified features
+
+Every item below was exercised against the live LinkedIn API, not just written.
+
+| Feature | Status | Evidence |
+|---|---|---|
+| Personal text posting | Verified | live post published |
+| Personal single-image posting | Verified | API accepted image upload |
+| Personal multi-image posting (`image_paths`) | Verified | live 2-image post, HTTP `201` |
+| HEIC/HEIF auto-conversion to JPG | Verified | conversion then successful upload |
+| **Organization text posting** | **Verified** | org app approved, live post published |
+| Organization page discovery (`rw_organization_admin`) | Verified | returned page URN + role |
+| Person URN lookup (`/v2/userinfo`) | Verified | resolved `urn:li:person:<sub>` |
+| Browser OAuth connect flow | Verified | code exchanged, token stored per account |
+| Per-account token masking in config API | Verified | regression suite |
+| Multi-account routing + `needs_clarification` | Verified | regression suite |
+| Scope defaults per target | Verified | personal and organization fallbacks |
+| Retired-scope pre-flight check | Verified | blocks `r_basicprofile` etc. before LinkedIn |
+| Actionable OAuth error page | Verified | names the offending scope + fix |
+
+Organization **image** posting is the remaining unverified path: text posting to a
+page is confirmed, images to a page are not yet exercised end to end.
 
 ### Multi-account support (v0.3.0)
 
@@ -26,9 +39,12 @@ and company pages. Each account is an independent credential set. When more than
 account can serve a request, the tools return `needs_clarification` with the candidate
 accounts and the agent asks which one to use instead of guessing.
 
-- organization image posting should still be treated as unverified until LinkedIn approval and org testing are complete
+- organization **text** posting is verified end to end with an approved LinkedIn app
+- organization **image** posting remains unverified and should be treated as provisional
 
-For this release, organization-related functionality should be treated as **provisional** and dependent on LinkedIn app approval, token scopes, and organization role permissions.
+Organization text workflows need: an approved app product set, the scopes above, and
+a page role for the authenticated member. Organization image workflows additionally
+need that upload path exercised against a live page, which has not been done yet.
 
 This plugin is designed for practical LinkedIn workflows where the user wants to:
 - check LinkedIn account and configuration readiness
@@ -48,20 +64,23 @@ The plugin is intentionally conservative:
 ## Current scope
 
 ### Supported
-- account and auth readiness checks
-- personal and organization routing
-- text post preview
-- text post creation
+- many accounts per installation, each an independent credential set
+- account and auth readiness checks, including per-account capability summaries
+- personal and organization routing, with `needs_clarification` instead of guessing
+- **organization discovery** - list pages a member administers via `rw_organization_admin`
+- **in-browser OAuth connect** - authorize URL, single-use `state` nonce, token written per account
+- **URN lookup buttons** - `GET /v2/userinfo` for the person URN, `organizationAcls` for pages
+- text post preview and creation for personal and organization targets
 - **single local image post preview**
 - **single local image post creation in personal mode**
 - **multi-image local post preview**
 - **multi-image local post creation in personal mode**
 - **HEIC/HEIF local image support with automatic JPG conversion in personal mode**
 - recent post retrieval where supported by LinkedIn scopes and permissions
-- configuration through plugin settings
+- configuration through plugin settings, split into Accounts and Runtime tabs
 
 ### Not fully included in this version
-- organization image posting validation
+- organization **image** posting validation (organization text posting is verified)
 - media carousels
 - video posting
 - scheduling
@@ -78,19 +97,34 @@ LinkedIn platform access is more restrictive than many other social APIs. Actual
 - correct author identity format
 - organization role permissions for company posting
 
-### Typical scope requirements
+### Default scopes
 
-#### Personal posting
-- `w_member_social`
+A new account starts with the same set the shipped profiles use, chosen by
+`default_target`. Only request scopes the LinkedIn app actually has products
+for: LinkedIn rejects the entire authorization request with
+`unauthorized_scope_error` when one scope is not enabled.
 
-#### Personal reading
-- `r_member_social`
+#### Personal (`default_target: personal`)
 
-#### Organization posting
-- `w_organization_social`
+```
+openid profile w_member_social r_member_social
+```
 
-#### Organization reading
-- `r_organization_social`
+`openid` + `profile` power the **Get Person URN** lookup via `/v2/userinfo`
+(the *Sign In with LinkedIn using OpenID Connect* product). `w_member_social`
+posts. `r_member_social` reads member posts and is approval-gated; drop it if
+LinkedIn refuses it.
+
+#### Organization (`default_target: organization`)
+
+```
+r_organization_social w_organization_social rw_organization_admin
+```
+
+`w_organization_social` posts, `r_organization_social` reads the page feed, and
+`rw_organization_admin` (the *Organization Access Control* product) enables
+discovering which pages the member administers. Without it, paste organization
+URNs manually.
 
 Some read operations may not be available in all environments, even when posting works.
 
@@ -107,7 +141,7 @@ profiles:
     linkedin:
       access_token: "..."          # masked in all tool output
       person_urn: urn:li:person:...
-      scopes: [w_member_social]
+      scopes: [openid, profile, w_member_social, r_member_social]
       default_target: personal
   myresumator_biz:
     label: MyResumator Business
@@ -116,7 +150,7 @@ profiles:
       organization_urns:
         - urn:li:organization:111
         - urn:li:organization:222
-      scopes: [w_organization_social, r_organization_social]
+      scopes: [r_organization_social, w_organization_social, rw_organization_admin]
       default_target: organization
 ```
 
@@ -147,6 +181,52 @@ The settings UI has two areas:
 - **Accounts** - the account list plus a per-account editor (label, token, acts
   as, scopes, person URN or organization URNs, visibility, dry run). Add, remove,
   rename, and set the default account here.
+
+### Connecting an account in the browser
+
+The settings page can run the full OAuth 2.0 flow, so the token never has to be
+copied by hand:
+
+1. Fill **LinkedIn app client id** and **client secret** for the account.
+2. Click **Connect account**. The plugin saves those app credentials, issues a
+   single-use `state` nonce, and opens LinkedIn's authorize page in a new tab.
+3. Sign in and approve. LinkedIn redirects to
+   `/api/plugins/linkedin/linkedin_oauth_callback`, which validates `state`,
+   exchanges the code for a token, and writes it into that account only.
+4. Close the tab and reload the settings page.
+
+Register the redirect URI shown after clicking **Connect account** (or your own
+override in **Redirect URI**) in the LinkedIn app's authorized redirect URLs.
+That one URL is what LinkedIn compares against during the exchange.
+
+The callback accepts `GET` and skips CSRF because it is a top-level browser
+navigation, but it still requires a logged-in operator session. The `state`
+nonce expires after 15 minutes and is deleted on first use, so a replayed or
+stale callback cannot overwrite credentials. Tokens are stored server-side and
+only a masked preview is ever shown.
+
+### Looking up the URN from the settings page
+
+Both URN fields have a lookup button, so the identifier never has to be pasted by
+hand:
+
+- **Get Person URN** calls `GET /v2/userinfo` and writes `urn:li:person:<sub>`.
+  It needs the `openid` scope on the token, otherwise LinkedIn answers 401.
+- **Get Organization URNs** calls `GET /rest/organizationAcls?q=roleAssignee`
+  and writes every page URN with its name and role. It needs the **Organization
+  Access Control** product, i.e. the `rw_organization_admin` scope. Neither
+  `w_organization_social` nor `r_organization_social` is enough: without
+  `rw_organization_admin` LinkedIn answers `403 ACCESS_DENIED` on
+  `partnerApiOrganizationAcls.FINDER-roleAssignee`. In that case paste the
+  organization URN manually; it is the numeric id in the page's LinkedIn admin
+  URL (`urn:li:organization:<id>`).
+
+  The legacy `projection` query parameter is rejected by `/rest` endpoints with
+  `400 ILLEGAL_ARGUMENT`, so the plugin never sends it.
+
+The lookup uses the token typed in the form, so it works before the account is
+saved. Only click **Save** to persist the result. Tokens are never echoed back in
+the response.
 - **Runtime** - shared defaults applied to every account on save: LinkedIn API
   version, base URL, timeout. Shared defaults never include credentials.
 
@@ -381,7 +461,8 @@ Organization posting and reading may require:
 - sufficient organization role permissions
 - LinkedIn app approval where applicable
 
-Organization image posting should still be treated as provisional until org validation is completed.
+Organization **text** posting is verified. Organization **image** posting is the
+only remaining unvalidated organization path.
 
 ## Troubleshooting
 

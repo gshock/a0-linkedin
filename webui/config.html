@@ -1,5 +1,10 @@
 <html>
-<head><title>LinkedIn Accounts</title></head>
+<head><title>LinkedIn Accounts</title>
+  <script type="module">
+    import { callJsonApi } from "/js/api.js";
+    globalThis._liApi = { callJsonApi };
+  </script>
+</head>
 <body>
 <div x-data="{
   tab: 'accounts',
@@ -7,12 +12,38 @@
   newName: '',
   newLabel: '',
   newType: 'personal',
+  addOpen: false,
   formError: '',
+  discovering: '',
+  discoverMessage: '',
+  discoverError: '',
+  oauthRedirect: '',
+  manualAuthUrl: '',
 
   init() {
     this.ensureShape();
     const names = Object.keys(config.profiles);
     this.selected = (config.active_profile && config.profiles[config.active_profile]) ? config.active_profile : names[0];
+    // With no accounts yet, the add panel is the only useful thing on screen.
+    this.addOpen = names.length === 0;
+    // normalize() above adds UI-only fields (scopes_text, organization_urns_text,
+    // defaults). Re-baseline the modal's snapshot so a freshly opened settings
+    // page is not reported as having unsaved changes. The modal publishes its
+    // context instance (not the shared store) on the modal element, and it is
+    // ready only after the wrapper initializes, hence the deferred re-check.
+    const rebaseline = () => {
+      try {
+        const ctx = document.querySelector('.modal.show')?.__pluginSettingsContext;
+        if (ctx && typeof ctx._toComparableJson === 'function') {
+          ctx.settingsSnapshotJson = ctx._toComparableJson(ctx.settings);
+        }
+      } catch (e) { /* re-baselining is cosmetic; never block the form */ }
+    };
+    rebound: {
+      rebaseline();
+      setTimeout(rebaseline, 0);
+      setTimeout(rebaseline, 250);
+    }
   },
 
   ensureShape() {
@@ -40,6 +71,9 @@
     if (!l.mode) l.mode = 'api';
     if (!l.api_base_url) l.api_base_url = 'https://api.linkedin.com';
     if (l.access_token === undefined) l.access_token = '';
+    if (l.client_id === undefined) l.client_id = '';
+    if (l.client_secret === undefined) l.client_secret = '';
+    if (l.oauth_redirect_uri === undefined) l.oauth_redirect_uri = '';
     if (!l.person_urn) l.person_urn = '';
     if (!Array.isArray(l.organization_urns)) l.organization_urns = [];
     if (!Array.isArray(l.scopes)) l.scopes = [];
@@ -99,6 +133,101 @@
     p.linkedin.organization_urns = String(p.linkedin.organization_urns_text || '').split(/\n+/).map((s) => s.trim()).filter(Boolean);
   },
 
+  async oauthConnect() {
+    const p = this.current();
+    if (!p) return;
+    this.discoverError = '';
+    this.discoverMessage = '';
+    this.manualAuthUrl = '';
+    this.oauthRedirect = p.linkedin.oauth_redirect_uri || '';
+    this.discovering = 'oauth';
+    // Open the tab before any await: Edge blocks window.open calls that happen
+    // after an async gap, which made the button look dead.
+    let tab = null;
+    try {
+      tab = window.open('', '_blank');
+    } catch (e) {
+      tab = null;
+    }
+    try {
+      const data = await globalThis._liApi.callJsonApi('/plugins/linkedin/linkedin_config_api', {
+        action: 'oauth_start',
+        name: this.selected,
+        redirect_uri: p.linkedin.oauth_redirect_uri || '',
+        profile: { linkedin: {
+          client_id: String(p.linkedin.client_id || '').trim(),
+          client_secret: String(p.linkedin.client_secret || '').trim(),
+          scopes: (p.linkedin.scopes || []).slice()
+        } }
+      });
+      if (!data || data.ok !== true) {
+        if (tab) tab.close();
+        this.discoverError = (data && data.message) ? data.message : 'Could not start the LinkedIn connection.';
+        return;
+      }
+      this.oauthRedirect = data.redirect_uri || '';
+      this.manualAuthUrl = data.authorize_url || '';
+      if (tab) {
+        tab.location.href = data.authorize_url;
+        this.discoverMessage = 'Finish the LinkedIn sign-in in the new tab. Make sure ' + this.oauthRedirect + ' is registered as a redirect URL in your LinkedIn app.';
+      } else {
+        this.discoverMessage = 'Popup blocked by the browser. Use the link below to continue.';
+      }
+    } catch (e) {
+      this.discoverError = 'Could not start the connection: ' + ((e && e.message) || e);
+    } finally {
+      this.discovering = '';
+    }
+  },
+
+  async discover(target) {
+    const p = this.current();
+    if (!p) return;
+    this.discoverError = '';
+    this.discoverMessage = '';
+    const token = String((p.linkedin.access_token || '')).trim();
+    if (!token) {
+      this.discoverError = 'Enter the access token first, then let the plugin look up the URN.';
+      return;
+    }
+    this.discovering = target;
+    try {
+      const params = {
+        action: 'discover',
+        name: this.selected,
+        target: target,
+        profile: { linkedin: { access_token: token } }
+      };
+      const data = await globalThis._liApi.callJsonApi('/plugins/linkedin/linkedin_config_api', params);
+      if (!data || data.ok !== true) {
+        this.discoverError = (data && data.message) ? data.message : 'Discovery failed.';
+        return;
+      }
+      if (target === 'personal') {
+        p.linkedin.person_urn = data.person_urn || '';
+        this.discoverMessage = data.name
+          ? 'Found ' + data.person_urn + ' (' + data.name + '). Save to keep it.'
+          : 'Found ' + data.person_urn + '. Save to keep it.';
+      } else {
+        const urns = data.organization_urns || [];
+        if (!urns.length) {
+          this.discoverError = 'This token cannot administer any LinkedIn page. Ask an admin to add you to the page, then retry.';
+          return;
+        }
+        p.linkedin.organization_urns_text = urns.join('\n');
+        this.applyOrgUrns();
+        const labels = (data.organizations || []).map(function (o) {
+          return (o.localizedName || o.organization) + ' (' + (o.role || 'role unknown') + ')';
+        });
+        this.discoverMessage = 'Found ' + urns.length + ' page(s): ' + labels.join(', ') + '. Save to keep them.';
+      }
+    } catch (e) {
+      this.discoverError = 'Discovery request failed: ' + ((e && e.message) || e);
+    } finally {
+      this.discovering = '';
+    }
+  },
+
   addAccount() {
     this.formError = '';
     const name = String(this.newName || '').trim().toLowerCase();
@@ -119,7 +248,9 @@
         access_token: '',
         person_urn: '',
         organization_urns: [],
-        scopes: isOrg ? ['w_organization_social', 'r_organization_social'] : ['w_member_social'],
+        scopes: isOrg
+          ? ['r_organization_social', 'w_organization_social', 'rw_organization_admin']
+          : ['openid', 'profile', 'w_member_social', 'r_member_social'],
         default_target: isOrg ? 'organization' : 'personal',
         linkedin_version: config.linkedin.linkedin_version || '202601',
         default_visibility: 'PUBLIC',
@@ -165,7 +296,10 @@
   </div>
 
   <!-- ================= ACCOUNTS ================= -->
-  <div x-show="tab === 'accounts'" style="display: flex; gap: 16px; flex-wrap: wrap;">
+  <!-- x-show overwrites inline `display`, which silently broke this two-column
+       layout (gap never applied, editor stacked under the account list). Bind
+       the whole display value so the flex row survives tab toggling. -->
+  <div :style="tab === 'accounts' ? 'display: flex; gap: 16px; flex-wrap: wrap;' : 'display: none;'">
 
     <!-- account list -->
     <div style="flex: 1 1 240px; min-width: 240px;">
@@ -186,17 +320,22 @@
         </div>
       </template>
 
-      <!-- add account -->
-      <div style="margin-top: 12px; padding: 10px; border: 1px dashed #4a4a4a; border-radius: 6px;">
-        <div style="font-size: 12px; font-weight: 700; color: #cfe4ff; margin-bottom: 8px;">Add account</div>
-        <input type="text" x-model="newName" placeholder="justlinks" style="width: 100%; margin-bottom: 6px; padding: 6px 8px; color: #f3f3f3; background: #1f1f1f; border: 1px solid #4a4a4a; border-radius: 5px; box-sizing: border-box; font-size: 12px;">
-        <input type="text" x-model="newLabel" placeholder="Display label" style="width: 100%; margin-bottom: 6px; padding: 6px 8px; color: #f3f3f3; background: #1f1f1f; border: 1px solid #4a4a4a; border-radius: 5px; box-sizing: border-box; font-size: 12px;">
-        <select x-model="newType" style="width: 100%; margin-bottom: 8px; padding: 6px 8px; color: #f3f3f3; background: #1f1f1f; border: 1px solid #4a4a4a; border-radius: 5px; box-sizing: border-box; font-size: 12px;">
-          <option value="personal">Personal profile</option>
-          <option value="organization">Organization page</option>
-        </select>
-        <button @click="addAccount()" style="width: 100%; padding: 7px 10px; border: none; border-radius: 5px; background: #0A66C2; color: #fff; font-size: 12px; font-weight: 600; cursor: pointer;">Add account</button>
-        <div x-show="formError" style="margin-top: 6px; font-size: 11px; color: #ff9b9b;" x-text="formError"></div>
+      <!-- add account (collapsible) -->
+      <div style="margin: 12px 0 16px; border: 1px dashed #4a4a4a; border-radius: 6px; overflow: hidden;">
+        <button type="button" @click="addOpen = !addOpen" :aria-expanded="addOpen ? 'true' : 'false'" aria-controls="linkedin-add-account-body" style="display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 8px; padding: 10px; border: none; background: none; color: #cfe4ff; font-size: 12px; font-weight: 700; font-family: inherit; text-align: left; cursor: pointer;">
+          <span>Add account</span>
+          <span aria-hidden="true" :style="'font-size: 10px; line-height: 1; transition: transform 0.15s ease; transform: rotate(' + (addOpen ? '90' : '0') + 'deg);'" style="font-size: 10px; line-height: 1; transition: transform 0.15s ease;">&#9654;</span>
+        </button>
+        <div x-show="addOpen" id="linkedin-add-account-body" style="padding: 0 10px 10px;">
+          <input type="text" x-model="newName" placeholder="justlinks" style="width: 100%; margin-bottom: 6px; padding: 6px 8px; color: #f3f3f3; background: #1f1f1f; border: 1px solid #4a4a4a; border-radius: 5px; box-sizing: border-box; font-size: 12px;">
+          <input type="text" x-model="newLabel" placeholder="Display label" style="width: 100%; margin-bottom: 6px; padding: 6px 8px; color: #f3f3f3; background: #1f1f1f; border: 1px solid #4a4a4a; border-radius: 5px; box-sizing: border-box; font-size: 12px;">
+          <select x-model="newType" style="width: 100%; margin-bottom: 8px; padding: 6px 8px; color: #f3f3f3; background: #1f1f1f; border: 1px solid #4a4a4a; border-radius: 5px; box-sizing: border-box; font-size: 12px;">
+            <option value="personal">Personal profile</option>
+            <option value="organization">Organization page</option>
+          </select>
+          <button @click="addAccount()" style="width: 100%; padding: 7px 10px; border: none; border-radius: 5px; background: #0A66C2; color: #fff; font-size: 12px; font-weight: 600; cursor: pointer;">Add account</button>
+          <div x-show="formError" style="margin-top: 6px; font-size: 11px; color: #ff9b9b;" x-text="formError"></div>
+        </div>
       </div>
     </div>
 
@@ -217,6 +356,31 @@
             <input type="text" x-model="current().label" style="width: 100%; padding: 7px 9px; color: #f3f3f3; background: #1f1f1f; border: 1px solid #4a4a4a; border-radius: 5px; box-sizing: border-box; font-size: 12px;">
           </div>
 
+          <div style="margin-bottom: 12px; padding: 10px; background: #252525; border: 1px solid #404040; border-radius: 6px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px;">
+              <div style="font-size: 12px; font-weight: 700; color: #cfe4ff;">Connect with LinkedIn</div>
+              <button type="button" @click="oauthConnect()" :disabled="discovering === 'oauth'"
+                style="padding: 5px 10px; font-size: 11px; border-radius: 5px; border: none; background: #0A66C2; color: #fff; cursor: pointer; font-weight: 600;">
+                <span x-text="discovering === 'oauth' ? 'Starting…' : 'Connect account'" style="color: inherit;"></span>
+              </button>
+            </div>
+            <input type="text" x-model="current().linkedin.client_id" placeholder="LinkedIn app client id" style="width: 100%; margin-bottom: 6px; padding: 7px 9px; color: #f3f3f3; background: #1f1f1f; border: 1px solid #4a4a4a; border-radius: 5px; box-sizing: border-box; font-size: 12px;">
+            <input type="password" x-model="current().linkedin.client_secret" placeholder="LinkedIn app client secret" style="width: 100%; margin-bottom: 6px; padding: 7px 9px; color: #f3f3f3; background: #1f1f1f; border: 1px solid #4a4a4a; border-radius: 5px; box-sizing: border-box; font-size: 12px;">
+            <input type="text" x-model="current().linkedin.oauth_redirect_uri" placeholder="Redirect URI (blank = auto)" style="width: 100%; padding: 7px 9px; color: #f3f3f3; background: #1f1f1f; border: 1px solid #4a4a4a; border-radius: 5px; box-sizing: border-box; font-size: 12px;">
+            <div style="font-size: 11px; color: #9a9a9a; margin-top: 6px;">
+              Add the printed redirect URI to your LinkedIn app's authorized redirect URLs before connecting.
+              The token is stored by the callback, so no copy-paste is needed.
+            </div>
+            <div x-show="discoverMessage" style="margin-top: 8px; font-size: 11px; line-height: 1.5; color: #9be89b; word-break: break-word;" x-text="discoverMessage"></div>
+            <div x-show="discoverError" style="margin-top: 8px; font-size: 11px; line-height: 1.5; color: #ff9b9b; word-break: break-word;" x-text="discoverError"></div>
+            <div x-show="oauthRedirect" style="margin-top: 6px; font-size: 11px; color: #9a9a9a;">
+              Redirect URI: <code style="color:#a8d8ff; word-break: break-all;" x-text="oauthRedirect"></code>
+            </div>
+            <div x-show="manualAuthUrl" style="margin-top: 6px; font-size: 11px; color: #ffd59a;">
+              Popup blocked. <a :href="manualAuthUrl" target="_blank" rel="noopener" style="color:#8fc4f7;">Open the LinkedIn authorize page</a> to continue.
+            </div>
+          </div>
+
           <div style="margin-bottom: 12px;">
             <div style="font-size: 12px; font-weight: 600; margin-bottom: 4px; color: #ddd;">Access token</div>
             <input type="password" x-model="current().linkedin.access_token" placeholder="Paste the LinkedIn access token" style="width: 100%; padding: 7px 9px; color: #f3f3f3; background: #1f1f1f; border: 1px solid #4a4a4a; border-radius: 5px; box-sizing: border-box; font-size: 12px;">
@@ -235,20 +399,37 @@
             <div style="font-size: 12px; font-weight: 600; margin-bottom: 4px; color: #ddd;">Scopes</div>
             <textarea rows="3" x-model="current().linkedin.scopes_text" @input="applyScopes()" placeholder="w_member_social" style="width: 100%; padding: 7px 9px; color: #f3f3f3; background: #1f1f1f; border: 1px solid #4a4a4a; border-radius: 5px; box-sizing: border-box; font-size: 12px; font-family: monospace;"></textarea>
             <div style="font-size: 11px; color: #9a9a9a; margin-top: 4px;">
-              Personal: <code style="color:#a8d8ff;">w_member_social</code> (add <code style="color:#a8d8ff;">r_member_social</code> only if approved).
-              Organization: <code style="color:#ffd59a;">w_organization_social</code> and <code style="color:#ffd59a;">r_organization_social</code>.
+              Personal: <code style="color:#a8d8ff;">openid</code>, <code style="color:#a8d8ff;">profile</code>, <code style="color:#a8d8ff;">w_member_social</code>, <code style="color:#a8d8ff;">r_member_social</code>.
+              Organization: <code style="color:#ffd59a;">r_organization_social</code>, <code style="color:#ffd59a;">w_organization_social</code>, <code style="color:#ffd59a;">rw_organization_admin</code>.
+              Only request scopes the app actually has products for; LinkedIn rejects the whole request otherwise.
             </div>
           </div>
 
           <div x-show="targetOf(selected) === 'personal'" style="margin-bottom: 12px;">
-            <div style="font-size: 12px; font-weight: 600; margin-bottom: 4px; color: #ddd;">Person URN</div>
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px;">
+              <div style="font-size: 12px; font-weight: 600; color: #ddd;">Person URN</div>
+              <button type="button" @click="discover('personal')" :disabled="discovering === 'personal'"
+                style="padding: 4px 9px; font-size: 11px; border-radius: 5px; border: 1px solid #0A66C2; background: transparent; color: #8fc4f7; cursor: pointer;">
+                <span x-text="discovering === 'personal' ? 'Looking up…' : 'Get Person URN'" style="color: inherit;"></span>
+              </button>
+            </div>
             <input type="text" x-model="current().linkedin.person_urn" placeholder="urn:li:person:abc123" style="width: 100%; padding: 7px 9px; color: #f3f3f3; background: #1f1f1f; border: 1px solid #4a4a4a; border-radius: 5px; box-sizing: border-box; font-size: 12px; font-family: monospace;">
+            <div style="font-size: 11px; color: #9a9a9a; margin-top: 4px;">Uses the token to call LinkedIn /v2/userinfo (needs the openid scope).</div>
           </div>
 
           <div x-show="targetOf(selected) === 'organization'" style="margin-bottom: 12px;">
-            <div style="font-size: 12px; font-weight: 600; margin-bottom: 4px; color: #ddd;">Organization URNs</div>
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px;">
+              <div style="font-size: 12px; font-weight: 600; color: #ddd;">Organization URNs</div>
+              <button type="button" @click="discover('organization')" :disabled="discovering === 'organization'"
+                style="padding: 4px 9px; font-size: 11px; border-radius: 5px; border: 1px solid #0A66C2; background: transparent; color: #8fc4f7; cursor: pointer;">
+                <span x-text="discovering === 'organization' ? 'Looking up…' : 'Get Organization URNs'" style="color: inherit;"></span>
+              </button>
+            </div>
             <textarea rows="4" x-model="current().linkedin.organization_urns_text" @input="applyOrgUrns()" placeholder="urn:li:organization:123456" style="width: 100%; padding: 7px 9px; color: #f3f3f3; background: #1f1f1f; border: 1px solid #4a4a4a; border-radius: 5px; box-sizing: border-box; font-size: 12px; font-family: monospace;"></textarea>
             <div style="font-size: 11px; color: #9a9a9a; margin-top: 4px;">One URN per line. One token can own several pages; the agent asks which page when a post does not name one.</div>
+            <div style="font-size: 11px; color: #9a9a9a; margin-top: 4px;">Uses the token to list pages you administer (needs w_organization_social or r_organization_social and a page role).</div>
+            <div x-show="discoverMessage" style="margin-top: 6px; font-size: 11px; color: #9be89b;" x-text="discoverMessage"></div>
+            <div x-show="discoverError" style="margin-top: 6px; font-size: 11px; color: #ff9b9b;" x-text="discoverError"></div>
           </div>
 
           <div style="margin-bottom: 12px;">

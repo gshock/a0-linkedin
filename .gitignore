@@ -66,3 +66,6 @@ node_modules/
 config.json
 .runtime_config.json
 .toggle-*
+
+# --- OAuth runtime state (single-use nonces, never commit) ---
+.oauth_state.json
