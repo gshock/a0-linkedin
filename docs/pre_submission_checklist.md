@@ -107,7 +107,7 @@ Optional later:
 
 ```yaml
 screenshots:
-  - https://raw.githubusercontent.com/gshock/a0-linkedin/main/webui/thumbnail.png
+  - https://raw.githubusercontent.com/gshock/a0-linkedin/main/webui/thumbnail.jpg
 ```
 
 ## 10. PR submission workflow
