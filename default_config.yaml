@@ -23,7 +23,7 @@ linkedin:
   default_visibility: PUBLIC
   dry_run: true
   timeout_seconds: 30
-  user_agent: AgentZero-LinkedIn-Plugin/0.3.0
+  user_agent: AgentZero-LinkedIn-Plugin/0.3.1
 profiles:
   justlinks:
     label: JustLinks
@@ -38,13 +38,12 @@ profiles:
         - openid
         - profile
         - w_member_social
-        - r_member_social
       default_target: personal
       linkedin_version: "202601"
       default_visibility: PUBLIC
       dry_run: true
       timeout_seconds: 30
-      user_agent: AgentZero-LinkedIn-Plugin/0.3.0
+      user_agent: AgentZero-LinkedIn-Plugin/0.3.1
   myresumator_me:
     label: MyResumator Personal
     linkedin:
@@ -58,13 +57,12 @@ profiles:
         - openid
         - profile
         - w_member_social
-        - r_member_social
       default_target: personal
       linkedin_version: "202601"
       default_visibility: PUBLIC
       dry_run: true
       timeout_seconds: 30
-      user_agent: AgentZero-LinkedIn-Plugin/0.3.0
+      user_agent: AgentZero-LinkedIn-Plugin/0.3.1
   myresumator_biz:
     label: MyResumator Business
     linkedin:
@@ -83,4 +81,4 @@ profiles:
       default_visibility: PUBLIC
       dry_run: true
       timeout_seconds: 30
-      user_agent: AgentZero-LinkedIn-Plugin/0.3.0
+      user_agent: AgentZero-LinkedIn-Plugin/0.3.1

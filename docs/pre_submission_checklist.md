@@ -1,6 +1,6 @@
-# LinkedIn Plugin Pre-Submission Checklist (v0.3.0)
+# LinkedIn Plugin Pre-Submission Checklist (v0.3.1)
 
-Audit state as of the v0.3.0 release. Boxes marked `[x]` were verified against
+Audit state as of the v0.3.1 release. Boxes marked `[x]` were verified against
 the real repository or the live LinkedIn API; `[ ]` items remain genuinely open.
 
 Upstream rules live in https://github.com/agent0ai/a0-plugins — recheck them at
@@ -69,7 +69,7 @@ submission time, since limits and required fields can change.
 - [x] `plugin.yaml` name is exactly `linkedin`
 - [x] `plugin.yaml` name matches the intended index folder name (`plugins/linkedin/`)
 - [x] `plugin.yaml` description is clear and public-facing
-- [x] `plugin.yaml` version is current (`0.3.0`)
+- [x] `plugin.yaml` version is current (`0.3.1`)
 - [x] `always_enabled: false` is consistent with Agent Zero conventions
 
 ## 6. Config model consistency

@@ -42,7 +42,7 @@ DEFAULT_LINKEDIN = {
     "default_visibility": "PUBLIC",
     "dry_run": True,
     "timeout_seconds": 30,
-    "user_agent": "AgentZero-LinkedIn-Plugin/0.3.0",
+    "user_agent": "AgentZero-LinkedIn-Plugin/0.3.1",
 }
 # Profiles are intentionally empty here: the accounts shipped in
 # default_config.yaml are the only seed. A phantom 'default' account would
@@ -209,6 +209,69 @@ def resolve_profile_candidates(config: dict, target: str | None = None) -> list[
             continue
         candidates.append(account)
     return candidates
+
+
+def organization_page_candidates(linkedin: dict) -> list[dict]:
+    """Known pages for one account, carrying a human label when we have one."""
+    linkedin = linkedin if isinstance(linkedin, dict) else {}
+    urns = [str(urn).strip() for urn in (linkedin.get("organization_urns") or []) if str(urn).strip()]
+    names = linkedin.get("organization_names") if isinstance(linkedin.get("organization_names"), dict) else {}
+    pinned = str(linkedin.get("organization_urn") or "").strip()
+    if pinned and pinned not in urns:
+        urns.insert(0, pinned)
+    rows: list[dict] = []
+    for urn in urns:
+        row = {
+            "organization_urn": urn,
+            "id": urn.rsplit(":organization:", 1)[-1] if ":organization:" in urn else urn,
+        }
+        label = str(names.get(urn) or "").strip()
+        if label:
+            row["label"] = label
+        rows.append(row)
+    return rows
+
+
+def resolve_organization_page(linkedin: dict, organization_urn: str | None = None) -> dict:
+    """Decide which page an organization post targets.
+
+    Resolution order: an explicitly named URN, then the pinned default page, then
+    the only known page. Several known pages require a choice, so the caller gets
+    `needs_clarification` plus labelled candidates instead of a silent guess.
+    """
+    linkedin = linkedin if isinstance(linkedin, dict) else {}
+    explicit = str(organization_urn or "").strip()
+    if explicit:
+        return {"organization_urn": explicit, "needs_clarification": False, "candidates": [], "error": None}
+
+    pinned = str(linkedin.get("organization_urn") or "").strip()
+    if pinned:
+        return {"organization_urn": pinned, "needs_clarification": False, "candidates": [], "error": None}
+
+    candidates = organization_page_candidates(linkedin)
+    if len(candidates) == 1:
+        return {
+            "organization_urn": candidates[0]["organization_urn"],
+            "needs_clarification": False,
+            "candidates": [],
+            "error": None,
+        }
+    if len(candidates) > 1:
+        return {
+            "organization_urn": "",
+            "needs_clarification": True,
+            "candidates": candidates,
+            "error": (
+                "This account can post to several LinkedIn pages. Name the page with "
+                "organization_urn, or set a default page in the plugin settings."
+            ),
+        }
+    return {
+        "organization_urn": "",
+        "needs_clarification": False,
+        "candidates": [],
+        "error": "No organization URN configured for organization posting.",
+    }
 
 
 def resolve_target_selection(config: dict, target: str | None = None, profile: str | None = None) -> dict:

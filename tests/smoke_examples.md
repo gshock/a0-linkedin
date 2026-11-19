@@ -1,4 +1,4 @@
-# LinkedIn Plugin — Smoke Examples (v0.3.0)
+# LinkedIn Plugin — Smoke Examples (v0.3.1)
 
 Copy-paste checks for a multi-account installation. The account names below are
 examples; substitute the names actually configured in the plugin settings.

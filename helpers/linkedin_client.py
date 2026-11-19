@@ -27,7 +27,7 @@ class LinkedInClient:
         self.auth = LinkedInAuthHelper(self.config)
         self.base_url = str(self.linkedin.get("api_base_url") or "https://api.linkedin.com").rstrip("/")
         self.timeout = int(self.linkedin.get("timeout_seconds") or 30)
-        self.user_agent = self.linkedin.get("user_agent") or "AgentZero-LinkedIn-Plugin/0.3.0"
+        self.user_agent = self.linkedin.get("user_agent") or "AgentZero-LinkedIn-Plugin/0.3.1"
         self.dry_run = bool(self.linkedin.get("dry_run", True))
 
     def _headers(self, include_json: bool = True, extra: dict | None = None) -> dict:
@@ -212,6 +212,35 @@ class LinkedInClient:
                 "role": item.get("role", ""),
             })
         return {"ok": True, "count": len(organizations), "organizations": organizations}
+
+    def get_organization_name(self, organization_urn: str) -> dict:
+        """Resolve a page URN to its human name.
+
+        `/rest/organizationAcls` returns no name fields, and `/rest` rejects the
+        legacy `projection` parameter that would request them (HTTP 400
+        ILLEGAL_ARGUMENT). `/rest/organizations/{id}` does return localizedName
+        with plain organization read access, so names are fetched per page.
+        """
+        self.auth.require_token()
+        org_id = ""
+        text = str(organization_urn or "").strip()
+        if ":organization:" in text:
+            org_id = text.rsplit(":organization:", 1)[1].strip()
+        elif text.isdigit():
+            org_id = text
+        if not org_id:
+            return {"ok": False, "status": 0, "error": {"message": "Not an organization URN."}}
+        result = self._request("GET", f"/rest/organizations/{org_id}")
+        if not result.get("ok"):
+            return result
+        data = result.get("data") or {}
+        return {
+            "ok": True,
+            "status": result.get("status"),
+            "organization": f"urn:li:organization:{org_id}",
+            "localizedName": str(data.get("localizedName") or ""),
+            "vanityName": str(data.get("vanityName") or ""),
+        }
 
     def register_image_upload(self, author: str) -> dict:
         self.auth.require_token()

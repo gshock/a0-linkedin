@@ -6,8 +6,9 @@ Manage approved LinkedIn posting workflows from Agent Zero using an API-first ap
 
 ## Release status
 
-**v0.3.0** adds multi-account support, the in-browser OAuth connect flow, and
-verified organization posting.
+**v0.3.1** adds human-readable organization page labels, a default-page picker,
+and label-aware page selection, on top of v0.3.0's multi-account support, in-browser
+OAuth connect flow, and verified organization posting.
 
 ### Verified features
 
@@ -28,11 +29,15 @@ Every item below was exercised against the live LinkedIn API, not just written.
 | Scope defaults per target | Verified | personal and organization fallbacks |
 | Retired-scope pre-flight check | Verified | blocks `r_basicprofile` etc. before LinkedIn |
 | Actionable OAuth error page | Verified | names the offending scope + fix |
+| Organization page names (`/rest/organizations/{id}`) | Verified | resolved 3 live pages to real names |
+| URN legend + **Show page names** button | Verified | live lookup, names persisted per account |
+| **Default page picker** | **Verified** | org post landed on the pinned page with no URN given |
+| Label-aware page selection | Verified | explicit URN overrode the pinned default |
 
 Organization **image** posting is the remaining unverified path: text posting to a
 page is confirmed, images to a page are not yet exercised end to end.
 
-### Multi-account support (v0.3.0)
+### Multi-account support (v0.3.1)
 
 A single installation can now hold **many LinkedIn accounts** - apps, member profiles,
 and company pages. Each account is an independent credential set. When more than one
@@ -107,13 +112,18 @@ for: LinkedIn rejects the entire authorization request with
 #### Personal (`default_target: personal`)
 
 ```
-openid profile w_member_social r_member_social
+openid profile w_member_social
 ```
 
 `openid` + `profile` power the **Get Person URN** lookup via `/v2/userinfo`
 (the *Sign In with LinkedIn using OpenID Connect* product). `w_member_social`
-posts. `r_member_social` reads member posts and is approval-gated; drop it if
-LinkedIn refuses it.
+posts.
+
+`r_member_social` is deliberately **not** a default. It reads member posts and is
+gated behind separate LinkedIn approval, and LinkedIn rejects the *entire*
+authorization when one requested scope is not granted. Shipping it by default
+would break connecting for any app without that approval, blocking posting over a
+scope only reading needs. Add it to the Scopes box only when your app holds it.
 
 #### Organization (`default_target: organization`)
 
@@ -141,7 +151,7 @@ profiles:
     linkedin:
       access_token: "..."          # masked in all tool output
       person_urn: urn:li:person:...
-      scopes: [openid, profile, w_member_social, r_member_social]
+      scopes: [openid, profile, w_member_social]
       default_target: personal
   myresumator_biz:
     label: MyResumator Business
@@ -173,6 +183,22 @@ Requests route per call through a single decision point,
 
 Accounts without a token are never offered as candidates. Credentials never
 propagate between accounts.
+
+### Page selection for organization posts
+
+Once an account is chosen, organization posts still need one specific page. That
+is a second, separate decision (`helpers/config.py::resolve_organization_page`):
+
+1. **Explicit `organization_urn`** - always wins, even over a pinned default, so
+   pinning a page never traps you into posting only there.
+2. **Pinned default page** - the **Default page** setting, used silently.
+3. **Only one page known** - used silently.
+4. **Several pages, none named** - returns `needs_clarification: true` with
+   labelled candidates (page name plus id) instead of guessing.
+5. **No pages known** - a clear error telling you to discover or paste a URN.
+
+Page labels come from `organization_names`, populated by **Show page names** or by
+discovery. A page without a label falls back to its raw URN.
 
 ## Settings overview
 
@@ -223,6 +249,13 @@ hand:
 
   The legacy `projection` query parameter is rejected by `/rest` endpoints with
   `400 ILLEGAL_ARGUMENT`, so the plugin never sends it.
+- **Show page names** resolves each URN in the box to its real page name via
+  `GET /rest/organizations/{id}`. `organizationAcls` returns no name fields, so
+  this is the only way to turn an id into something readable. Resolved names are
+  stored per account in `organization_names` and shown as a legend under the box.
+- **Default page** picks the page organization posts use when a request does not
+  name one. Leave it on *Ask me which page* to be prompted whenever several pages
+  exist.
 
 The lookup uses the token typed in the form, so it works before the account is
 saved. Only click **Save** to persist the result. Tokens are never echoed back in
@@ -441,9 +474,12 @@ If you need help finding the correct LinkedIn person/member identifier for perso
 ### Organization posting
 1. Confirm the organization token, scopes, and organization role are valid
 2. Check `linkedin_account status`
-3. Preview the post
-4. Create the post only after readiness is confirmed
-5. Verify the result on LinkedIn
+3. Confirm the target page: set a **Default page** in settings, or name
+   `organization_urn` in the request. With several pages and neither set, the tool
+   returns `needs_clarification` with labelled candidates and the agent asks.
+4. Preview the post
+5. Create the post only after readiness is confirmed
+6. Verify the result on LinkedIn
 
 ## Known limitations
 
@@ -472,5 +508,7 @@ only remaining unvalidated organization path.
 | HTTP `422` on author | wrong URN type | use `urn:li:person:*` for personal author |
 | missing `r_member_social` | personal read unavailable | do not rely on personal read for MVP |
 | organization workflow unavailable | missing token, scope, URN, app approval, or role | verify configuration and LinkedIn app permissions |
+| `needs_clarification` on an org post | several pages known and none named | pass `organization_urn`, or set a **Default page** in settings |
+| page names missing in the legend | names not resolved yet for that account | click **Show page names**, then **Save** |
 | HEIC conversion unavailable | no local converter installed | install `libheif-examples` to provide `heif-convert` |
 | config UI looks stale | cached or outdated state | refresh the UI or reload the plugin |

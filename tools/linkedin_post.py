@@ -14,7 +14,11 @@ class LinkedInPost(Tool):
         image_paths = self.args.get("image_paths") or []
         alt_text = self.args.get("alt_text") or ""
 
-        from usr.plugins.linkedin.helpers.config import load_config, resolve_target_selection
+        from usr.plugins.linkedin.helpers.config import (
+            load_config,
+            resolve_organization_page,
+            resolve_target_selection,
+        )
         from usr.plugins.linkedin.helpers.linkedin_auth import LinkedInAuthError
         from usr.plugins.linkedin.helpers.linkedin_client import LinkedInClient
         from usr.plugins.linkedin.helpers.linkedin_format import compact_post_preview
@@ -56,6 +60,37 @@ class LinkedInPost(Tool):
                 "active_profile": resolved_profile,
                 "profiles": config.get("profiles", {}),
             }
+
+            # Organization posts need one specific page. Resolve it before any
+            # API call so an unspecified page asks (with page names) instead of
+            # failing with a bare "no organization URN configured" error.
+            if effective_target == "organization":
+                page = resolve_organization_page(resolved_linkedin, organization_urn)
+                if page.get("needs_clarification"):
+                    return Response(
+                        message=str({
+                            "ok": False,
+                            "action": action,
+                            "target": effective_target,
+                            "resolved_profile": resolved_profile,
+                            "needs_clarification": True,
+                            "message": page.get("error"),
+                            "candidates": page.get("candidates", []),
+                        }),
+                        break_loop=False,
+                    )
+                if not page.get("organization_urn"):
+                    return Response(
+                        message=str({
+                            "ok": False,
+                            "action": action,
+                            "target": effective_target,
+                            "resolved_profile": resolved_profile,
+                            "message": page.get("error") or "No organization page selected.",
+                        }),
+                        break_loop=False,
+                    )
+                organization_urn = page.get("organization_urn")
 
             if image_path and image_paths:
                 raise ValueError("Provide either 'image_path' or 'image_paths', not both.")

@@ -107,6 +107,7 @@ class LinkedInConfigApi(ApiHandler):
         target: str | None = None,
         access_token: str | None = None,
         redirect_uri: str | None = None,
+        urns: list | None = None,
         request_root: str = "",
         **_: object,
     ) -> dict:
@@ -256,6 +257,9 @@ class LinkedInConfigApi(ApiHandler):
         if action == "discover":
             return self._discover(config=config, name=name, target=target, access_token=access_token)
 
+        if action == "labels":
+            return self._labels(config=config, name=name, urns=urns, access_token=access_token)
+
         if action == "oauth_start":
             return self._oauth_start(config=config, name=name, redirect_uri=redirect_uri, request_root=request_root)
 
@@ -329,7 +333,11 @@ class LinkedInConfigApi(ApiHandler):
         default_scopes = (
             ["r_organization_social", "w_organization_social", "rw_organization_admin"]
             if resolved_target == "organization"
-            else ["openid", "profile", "w_member_social", "r_member_social"]
+            # r_member_social is deliberately excluded: LinkedIn gates it behind
+            # extra approval, and requesting a scope the app does not hold fails
+            # the WHOLE authorization with unauthorized_scope_error, which would
+            # block posting over a scope that only reading needs.
+            else ["openid", "profile", "w_member_social"]
         )
         scopes = form_linkedin.get("scopes") or linkedin.get("scopes") or default_scopes
         if isinstance(scopes, str):
@@ -473,6 +481,22 @@ class LinkedInConfigApi(ApiHandler):
             item for item in found.get("organizations", [])
             if str(item.get("organization") or "").startswith("urn:li:organization:")
         ]
+
+        # organizationAcls carries no name fields, and /rest rejects the legacy
+        # `projection` parameter that used to request them, so resolve each page
+        # name separately. Failures are tolerated: a missing label must never
+        # break discovery, the URN is still correct without it.
+        for item in organizations:
+            if str(item.get("localizedName") or "").strip():
+                continue
+            try:
+                named = client.get_organization_name(item.get("organization") or "")
+            except Exception:
+                named = {"ok": False}
+            if named.get("ok"):
+                item["localizedName"] = named.get("localizedName") or ""
+                item["vanityName"] = named.get("vanityName") or ""
+
         return {
             "ok": True,
             "action": "discover",
@@ -480,6 +504,87 @@ class LinkedInConfigApi(ApiHandler):
             "target": resolved_target,
             "organization_urns": [item["organization"] for item in organizations],
             "organizations": organizations,
+        }
+
+    def _labels(
+        self,
+        config: dict | None = None,
+        name: str | None = None,
+        urns: list | None = None,
+        access_token: str | None = None,
+    ) -> dict:
+        """Resolve organization URNs to human page names.
+
+        `/rest/organizationAcls` returns no name fields and `/rest` rejects the
+        legacy `projection` parameter, so each page is resolved through
+        `/rest/organizations/{id}`, which does return localizedName with plain
+        organization read access.
+        """
+        current = load_config()
+        account_name = str(name or current.get("active_profile") or "").strip()
+        linkedin = get_profile_config(current, account_name)
+        form_linkedin = _account_linkedin(config)
+        if _looks_masked(form_linkedin.get("access_token")):
+            form_linkedin.pop("access_token", None)
+        candidate_token = str(access_token or form_linkedin.get("access_token") or "").strip()
+        if candidate_token and not _looks_masked(candidate_token):
+            linkedin["access_token"] = candidate_token
+
+        if not str(linkedin.get("access_token") or "").strip():
+            return {
+                "ok": False,
+                "action": "labels",
+                "account": account_name,
+                "message": "No access token configured for this account.",
+            }
+
+        # Mirrors _discover: the client is imported locally, not at module level.
+        from usr.plugins.linkedin.helpers.linkedin_client import LinkedInClient
+
+        requested = urns if isinstance(urns, list) and urns else list(linkedin.get("organization_urns") or [])
+        requested = [str(urn).strip() for urn in requested if str(urn).strip()]
+        if not requested:
+            return {
+                "ok": True,
+                "action": "labels",
+                "account": account_name,
+                "count": 0,
+                "labels": {},
+                "errors": {},
+                "message": "No organization URNs to label yet.",
+            }
+
+        client = LinkedInClient({
+            "linkedin": linkedin,
+            "active_profile": account_name,
+            "profiles": current.get("profiles", {}),
+        })
+        labels: dict[str, str] = {}
+        errors: dict[str, str] = {}
+        for urn in requested:
+            try:
+                found = client.get_organization_name(urn)
+            except Exception as exc:
+                errors[urn] = str(exc)
+                continue
+            if found.get("ok"):
+                label = str(found.get("localizedName") or "").strip() or str(found.get("vanityName") or "").strip()
+                if label:
+                    labels[urn] = label
+            else:
+                error = found.get("error")
+                if isinstance(error, dict):
+                    errors[urn] = str(error.get("message") or error.get("raw") or "lookup failed")[:160]
+                else:
+                    errors[urn] = str(error or "lookup failed")[:160]
+
+        return {
+            "ok": True,
+            "action": "labels",
+            "account": account_name,
+            "count": len(labels),
+            "labels": labels,
+            "errors": errors,
         }
 
 

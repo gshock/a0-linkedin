@@ -1,4 +1,4 @@
-# LinkedIn Plugin — Human Test Plan (v0.3.0, multi-account)
+# LinkedIn Plugin — Human Test Plan (v0.3.1, multi-account)
 
 Operator-run acceptance tests. Each test states the setup, the actions, and the
 result that means it passed. Substitute your real account names for the examples

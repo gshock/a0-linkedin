@@ -15,6 +15,8 @@
   addOpen: false,
   formError: '',
   discovering: '',
+  refreshing: false,
+  labeling: false,
   discoverMessage: '',
   discoverError: '',
   oauthRedirect: '',
@@ -31,19 +33,36 @@
     // page is not reported as having unsaved changes. The modal publishes its
     // context instance (not the shared store) on the modal element, and it is
     // ready only after the wrapper initializes, hence the deferred re-check.
-    const rebaseline = () => {
-      try {
-        const ctx = document.querySelector('.modal.show')?.__pluginSettingsContext;
-        if (ctx && typeof ctx._toComparableJson === 'function') {
-          ctx.settingsSnapshotJson = ctx._toComparableJson(ctx.settings);
-        }
-      } catch (e) { /* re-baselining is cosmetic; never block the form */ }
-    };
+    const rebaseline = () => this.rebaseline();
     rebound: {
       rebaseline();
       setTimeout(rebaseline, 0);
       setTimeout(rebaseline, 250);
     }
+  },
+
+  // Re-baseline the modal's dirty-check snapshot. normalize() adds UI-only
+  // fields (scopes_text, organization_urns_text, defaults) that the modal never
+  // sees in the saved payload, so without this a freshly opened or freshly
+  // refreshed page reports unsaved changes. Shared by init() and refreshSettings().
+  // Modals stack: opening settings from the plugin list leaves BOTH elements
+  // carrying `.modal.show`, and querySelector would return the inner list modal
+  // first, which has no settings context. Always scan for the one that has it.
+  settingsContext() {
+    const modals = Array.from(document.querySelectorAll('.modal.show'));
+    for (const m of modals) {
+      if (m.__pluginSettingsContext) return m.__pluginSettingsContext;
+    }
+    return null;
+  },
+
+  rebaseline() {
+    try {
+      const ctx = this.settingsContext();
+      if (ctx && typeof ctx._toComparableJson === 'function') {
+        ctx.settingsSnapshotJson = ctx._toComparableJson(ctx.settings);
+      }
+    } catch (e) { /* re-baselining is cosmetic; never block the form */ }
   },
 
   ensureShape() {
@@ -76,13 +95,16 @@
     if (l.oauth_redirect_uri === undefined) l.oauth_redirect_uri = '';
     if (!l.person_urn) l.person_urn = '';
     if (!Array.isArray(l.organization_urns)) l.organization_urns = [];
+    if (l.organization_urn === undefined || l.organization_urn === null) l.organization_urn = '';
+    if (!l.organization_names || typeof l.organization_names !== 'object' || Array.isArray(l.organization_names)) l.organization_names = {};
+    if (l.organization_names_error === undefined) l.organization_names_error = '';
     if (!Array.isArray(l.scopes)) l.scopes = [];
     if (!l.default_target) l.default_target = 'personal';
     if (!l.linkedin_version) l.linkedin_version = config.linkedin.linkedin_version || '202601';
     if (!l.default_visibility) l.default_visibility = 'PUBLIC';
     if (l.dry_run === undefined) l.dry_run = true;
     if (!l.timeout_seconds) l.timeout_seconds = 30;
-    if (!l.user_agent) l.user_agent = 'AgentZero-LinkedIn-Plugin/0.3.0';
+    if (!l.user_agent) l.user_agent = 'AgentZero-LinkedIn-Plugin/0.3.1';
     l.scopes_text = (l.scopes || []).join(', ');
     l.organization_urns_text = (l.organization_urns || []).join('\n');
   },
@@ -131,6 +153,79 @@
     const p = this.current();
     if (!p) return;
     p.linkedin.organization_urns = String(p.linkedin.organization_urns_text || '').split(/\n+/).map((s) => s.trim()).filter(Boolean);
+  },
+
+  // Legend rows for the URN box. Only URNs currently in the box are shown, so a
+  // removed page does not linger in the list.
+  labeledUrns() {
+    const p = this.current();
+    if (!p) return [];
+    const names = p.linkedin.organization_names || {};
+    const urns = p.linkedin.organization_urns || [];
+    const rows = [];
+    urns.forEach(function (urn) {
+      const name = String(names[urn] || '').trim();
+      if (!name) return;
+      const id = urn.indexOf(':organization:') >= 0 ? urn.split(':organization:').pop() : urn;
+      rows.push({ urn: urn, id: id, name: name });
+    });
+    return rows;
+  },
+
+  // Options for the Default page select. Falls back to the numeric id when a
+  // page has no resolved name yet, so the dropdown is never empty for a URN
+  // that is already configured.
+  pageOptions() {
+    const p = this.current();
+    if (!p) return [];
+    const names = p.linkedin.organization_names || {};
+    const urns = p.linkedin.organization_urns || [];
+    return urns.filter(Boolean).map(function (urn) {
+      const name = String(names[urn] || '').trim();
+      const id = urn.indexOf(':organization:') >= 0 ? urn.split(':organization:').pop() : urn;
+      return { urn: urn, label: name ? name + ' (' + id + ')' : urn };
+    });
+  },
+
+  // Resolve page names through /rest/organizations/{id}. organizationAcls does
+  // not return names, so this is the only way to turn an id into a label.
+  async labelUrns() {
+    const p = this.current();
+    if (!p) return;
+    this.applyOrgUrns();
+    const urns = (p.linkedin.organization_urns || []).filter(Boolean);
+    p.linkedin.organization_names_error = '';
+    if (!urns.length) {
+      p.linkedin.organization_names_error = 'Add at least one organization URN first.';
+      return;
+    }
+    this.labeling = true;
+    try {
+      const data = await globalThis._liApi.callJsonApi('/plugins/linkedin/linkedin_config_api', {
+        action: 'labels',
+        name: this.selected,
+        urns: urns,
+        profile: { linkedin: { access_token: String(p.linkedin.access_token || '') } }
+      });
+      if (!data || data.ok !== true) {
+        p.linkedin.organization_names_error = (data && data.message) ? data.message : 'Could not resolve page names.';
+        return;
+      }
+      const labels = data.labels || {};
+      const merged = Object.assign({}, p.linkedin.organization_names || {});
+      Object.keys(labels).forEach(function (urn) { merged[urn] = labels[urn]; });
+      p.linkedin.organization_names = merged;
+      const errors = data.errors || {};
+      const failed = Object.keys(errors);
+      if (failed.length) {
+        p.linkedin.organization_names_error = 'Could not resolve ' + failed.length + ' page(s): ' + failed.map(function (u) { return errors[u]; }).join('; ');
+      }
+      this.discoverMessage = 'Resolved ' + Object.keys(labels).length + ' page name(s). Save to keep them.';
+    } catch (e) {
+      p.linkedin.organization_names_error = 'Lookup failed: ' + ((e && e.message) || e);
+    } finally {
+      this.labeling = false;
+    }
   },
 
   async oauthConnect() {
@@ -216,6 +311,17 @@
         }
         p.linkedin.organization_urns_text = urns.join('\n');
         this.applyOrgUrns();
+        // Keep the resolved page names so the URN box can show what each id is.
+        // organizationAcls carries no names, so discovery resolves them per page.
+        const names = {};
+        (data.organizations || []).forEach(function (o) {
+          const urn = o.organization || '';
+          const label = (o.localizedName || '').trim();
+          if (urn && label) names[urn] = label;
+        });
+        if (Object.keys(names).length) {
+          p.linkedin.organization_names = Object.assign({}, p.linkedin.organization_names || {}, names);
+        }
         const labels = (data.organizations || []).map(function (o) {
           return (o.localizedName || o.organization) + ' (' + (o.role || 'role unknown') + ')';
         });
@@ -225,6 +331,47 @@
       this.discoverError = 'Discovery request failed: ' + ((e && e.message) || e);
     } finally {
       this.discovering = '';
+    }
+  },
+
+  // Re-read settings from the server. The settings modal exposes its context on
+  // the modal element; calling loadSettings() re-fetches the config instead of
+  // just re-rendering stale values, which is what makes this useful after
+  // finishing the OAuth flow in another tab.
+  async refreshSettings() {
+    const ctx = this.settingsContext();
+    if (!ctx || typeof ctx.loadSettings !== 'function') {
+      this.discoverError = 'Refresh is unavailable: the settings context was not found.';
+      return;
+    }
+    if (typeof ctx.confirmDiscardUnsavedChanges === 'function' && !ctx.confirmDiscardUnsavedChanges()) {
+      return;
+    }
+    this.refreshing = true;
+    this.discoverError = '';
+    const keepTab = this.tab;
+    const keepSelected = this.selected;
+    try {
+      await ctx.loadSettings();
+      // The reload replaces context.settings, so normalize the fresh object and
+      // keep the operator where they were.
+      this.ensureShape();
+      const names = Object.keys(config.profiles);
+      if (keepSelected && config.profiles[keepSelected]) this.selected = keepSelected;
+      else this.selected = names[0] || '';
+      this.tab = keepTab;
+      this.discoverMessage = 'Settings reloaded from the server.';
+      // loadSettings() re-baselines against the RAW server payload, then
+      // ensureShape() above adds UI-only fields, so the form would read as
+      // dirty immediately. Re-baseline after Alpine has applied the fresh
+      // settings, same deferred pattern as init().
+      this.rebaseline();
+      setTimeout(() => this.rebaseline(), 0);
+      setTimeout(() => this.rebaseline(), 250);
+    } catch (e) {
+      this.discoverError = 'Refresh failed: ' + ((e && e.message) || e);
+    } finally {
+      this.refreshing = false;
     }
   },
 
@@ -248,15 +395,19 @@
         access_token: '',
         person_urn: '',
         organization_urns: [],
+        // Personal defaults stop at w_member_social. r_member_social (reading
+        // member posts) is approval-gated, and LinkedIn rejects the entire
+        // authorization when a requested scope is not granted, so shipping it
+        // by default would break connecting for most apps.
         scopes: isOrg
           ? ['r_organization_social', 'w_organization_social', 'rw_organization_admin']
-          : ['openid', 'profile', 'w_member_social', 'r_member_social'],
+          : ['openid', 'profile', 'w_member_social'],
         default_target: isOrg ? 'organization' : 'personal',
         linkedin_version: config.linkedin.linkedin_version || '202601',
         default_visibility: 'PUBLIC',
         dry_run: true,
         timeout_seconds: 30,
-        user_agent: 'AgentZero-LinkedIn-Plugin/0.3.0'
+        user_agent: 'AgentZero-LinkedIn-Plugin/0.3.1'
       }
     };
     this.normalize(name);
@@ -293,6 +444,14 @@
         :style="'padding: 8px 16px; border: none; background: none; cursor: pointer; font-size: 12px; font-weight: 600; margin-bottom: -2px; color: ' + (tab === t ? '#0A66C2' : '#b5b5b5') + '; border-bottom: 2px solid ' + (tab === t ? '#0A66C2' : 'transparent')"
         x-text="t.charAt(0).toUpperCase() + t.slice(1)"></button>
     </template>
+    <!-- Re-reads settings from the server. Useful after finishing the OAuth
+         flow in another tab: the token lands in config, but this form still
+         shows whatever it loaded when the modal opened. -->
+    <button @click="refreshSettings()" :disabled="refreshing"
+      title="Reload settings from the server (discards unsaved edits)"
+      style="margin-left: auto; align-self: center; padding: 4px 10px; font-size: 11px; border-radius: 5px; border: 1px solid #3a3a3a; background: transparent; color: #b5b5b5; cursor: pointer;">
+      <span x-text="refreshing ? 'Refreshing...' : 'Refresh'"></span>
+    </button>
   </div>
 
   <!-- ================= ACCOUNTS ================= -->
@@ -399,7 +558,7 @@
             <div style="font-size: 12px; font-weight: 600; margin-bottom: 4px; color: #ddd;">Scopes</div>
             <textarea rows="3" x-model="current().linkedin.scopes_text" @input="applyScopes()" placeholder="w_member_social" style="width: 100%; padding: 7px 9px; color: #f3f3f3; background: #1f1f1f; border: 1px solid #4a4a4a; border-radius: 5px; box-sizing: border-box; font-size: 12px; font-family: monospace;"></textarea>
             <div style="font-size: 11px; color: #9a9a9a; margin-top: 4px;">
-              Personal: <code style="color:#a8d8ff;">openid</code>, <code style="color:#a8d8ff;">profile</code>, <code style="color:#a8d8ff;">w_member_social</code>, <code style="color:#a8d8ff;">r_member_social</code>.
+              Personal: <code style="color:#a8d8ff;">openid</code>, <code style="color:#a8d8ff;">profile</code>, <code style="color:#a8d8ff;">w_member_social</code>. Add <code style="color:#a8d8ff;">r_member_social</code> only if your app holds that approval: reading member posts needs it, and requesting a scope your app lacks fails the whole login.
               Organization: <code style="color:#ffd59a;">r_organization_social</code>, <code style="color:#ffd59a;">w_organization_social</code>, <code style="color:#ffd59a;">rw_organization_admin</code>.
               Only request scopes the app actually has products for; LinkedIn rejects the whole request otherwise.
             </div>
@@ -420,12 +579,41 @@
           <div x-show="targetOf(selected) === 'organization'" style="margin-bottom: 12px;">
             <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px;">
               <div style="font-size: 12px; font-weight: 600; color: #ddd;">Organization URNs</div>
-              <button type="button" @click="discover('organization')" :disabled="discovering === 'organization'"
-                style="padding: 4px 9px; font-size: 11px; border-radius: 5px; border: 1px solid #0A66C2; background: transparent; color: #8fc4f7; cursor: pointer;">
-                <span x-text="discovering === 'organization' ? 'Looking up…' : 'Get Organization URNs'" style="color: inherit;"></span>
-              </button>
+              <div style="display: flex; gap: 6px;">
+                <button type="button" @click="labelUrns()" :disabled="labeling"
+                  style="padding: 4px 9px; font-size: 11px; border-radius: 5px; border: 1px solid #0A66C2; background: transparent; color: #8fc4f7; cursor: pointer;">
+                  <span x-text="labeling ? 'Resolving…' : 'Show page names'" style="color: inherit;"></span>
+                </button>
+                <button type="button" @click="discover('organization')" :disabled="discovering === 'organization'"
+                  style="padding: 4px 9px; font-size: 11px; border-radius: 5px; border: 1px solid #0A66C2; background: transparent; color: #8fc4f7; cursor: pointer;">
+                  <span x-text="discovering === 'organization' ? 'Looking up…' : 'Get Organization URNs'" style="color: inherit;"></span>
+                </button>
+              </div>
             </div>
             <textarea rows="4" x-model="current().linkedin.organization_urns_text" @input="applyOrgUrns()" placeholder="urn:li:organization:123456" style="width: 100%; padding: 7px 9px; color: #f3f3f3; background: #1f1f1f; border: 1px solid #4a4a4a; border-radius: 5px; box-sizing: border-box; font-size: 12px; font-family: monospace;"></textarea>
+            <!-- Human-readable legend: a URN like urn:li:organization:146718890 says
+                 nothing on its own, and organizationAcls returns no names. -->
+            <template x-if="labeledUrns().length">
+              <div style="margin-top: 6px; padding: 6px 8px; background: #1a1a1a; border: 1px solid #333; border-radius: 5px;">
+                <template x-for="row in labeledUrns()" :key="row.urn">
+                  <div style="font-size: 11px; display: flex; gap: 6px; align-items: baseline; padding: 1px 0;">
+                    <span style="color: #8fc4f7; font-weight: 600;" x-text="row.name"></span>
+                    <span style="color: #777; font-family: monospace;" x-text="row.id"></span>
+                  </div>
+                </template>
+                <div x-show="current().linkedin.organization_names_error" style="font-size: 11px; color: #ff9b9b; margin-top: 3px;" x-text="current().linkedin.organization_names_error"></div>
+              </div>
+            </template>
+            <div style="margin-top: 8px;">
+              <div style="font-size: 12px; font-weight: 600; margin-bottom: 4px; color: #ddd;">Default page</div>
+              <select x-model="current().linkedin.organization_urn" style="width: 100%; padding: 7px 9px; color: #f3f3f3; background: #1f1f1f; border: 1px solid #4a4a4a; border-radius: 5px; box-sizing: border-box; font-size: 12px;">
+                <option value="">Ask me which page (no default)</option>
+                <template x-for="opt in pageOptions()" :key="opt.urn">
+                  <option :value="opt.urn" x-text="opt.label"></option>
+                </template>
+              </select>
+              <div style="font-size: 11px; color: #9a9a9a; margin-top: 4px;">Posts to this page without asking. With no default set, the agent asks which page when several exist.</div>
+            </div>
             <div style="font-size: 11px; color: #9a9a9a; margin-top: 4px;">One URN per line. One token can own several pages; the agent asks which page when a post does not name one.</div>
             <div style="font-size: 11px; color: #9a9a9a; margin-top: 4px;">Uses the token to list pages you administer (needs w_organization_social or r_organization_social and a page role).</div>
             <div x-show="discoverMessage" style="margin-top: 6px; font-size: 11px; color: #9be89b;" x-text="discoverMessage"></div>
