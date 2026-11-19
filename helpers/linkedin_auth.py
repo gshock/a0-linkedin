@@ -38,11 +38,20 @@ class LinkedInAuthHelper:
                 str(linkedin.get("default_target") or "").strip() not in {"", "organization"},
             ])
 
-        if _has_meaningful_values(root_linkedin):
-            return root_linkedin
+        # An explicitly resolved profile always wins; the root block is only a
+        # fallback so an account can never inherit another account's credentials.
         if _has_meaningful_values(profile_linkedin):
             return profile_linkedin
-        return root_linkedin or profile_linkedin or {}
+        if _has_meaningful_values(root_linkedin):
+            return root_linkedin
+        return profile_linkedin or root_linkedin or {}
+
+    def current_profile(self) -> str:
+        """Name of the account this helper is operating on."""
+        active = str(self.config.get("active_profile") or "").strip()
+        if active:
+            return active
+        return "default"
 
     def get_scopes(self) -> list[str]:
         raw = self.linkedin.get("scopes", [])
@@ -85,6 +94,7 @@ class LinkedInAuthHelper:
     def get_auth_state(self) -> dict:
         scopes = self.get_scopes()
         return {
+            "profile": self.current_profile(),
             "mode": self.linkedin.get("mode", "api"),
             "auth_strategy": self.linkedin.get("auth_strategy", "oauth2"),
             "client_id_configured": bool(self.linkedin.get("client_id")),

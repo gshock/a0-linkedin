@@ -1,5 +1,15 @@
+# LinkedIn plugin default configuration.
+#
+# Every entry under `profiles` is one LinkedIn account (a credential set).
+# An account can act as a person or as an organization; the plugin infers
+# which from `default_target`, the scopes, and the URNs you provide.
+#
+# When more than one account can serve a request, the tools return
+# `needs_clarification` with the candidate list so the agent can ask you which
+# account to use. Pass `profile: "<name>"` to skip the question.
+#
 enabled: false
-active_profile: personal_app
+active_profile: justlinks
 linkedin:
   mode: api
   api_base_url: https://api.linkedin.com
@@ -13,26 +23,10 @@ linkedin:
   default_visibility: PUBLIC
   dry_run: true
   timeout_seconds: 30
-  user_agent: AgentZero-LinkedIn-Plugin/0.2.0
+  user_agent: AgentZero-LinkedIn-Plugin/0.3.0
 profiles:
-  default:
-    label: Default
-    linkedin:
-      mode: api
-      api_base_url: https://api.linkedin.com
-      access_token: ""
-      person_urn: ""
-      organization_urn: ""
-      organization_urns: []
-      scopes: []
-      default_target: personal
-      linkedin_version: "202601"
-      default_visibility: PUBLIC
-      dry_run: true
-      timeout_seconds: 30
-      user_agent: AgentZero-LinkedIn-Plugin/0.2.0
-  personal_app:
-    label: Personal App
+  justlinks:
+    label: JustLinks
     linkedin:
       mode: api
       api_base_url: https://api.linkedin.com
@@ -47,9 +41,26 @@ profiles:
       default_visibility: PUBLIC
       dry_run: true
       timeout_seconds: 30
-      user_agent: AgentZero-LinkedIn-Plugin/0.2.0
-  org_app:
-    label: Organization App
+      user_agent: AgentZero-LinkedIn-Plugin/0.3.0
+  myresumator_me:
+    label: MyResumator Personal
+    linkedin:
+      mode: api
+      api_base_url: https://api.linkedin.com
+      access_token: ""
+      person_urn: ""
+      organization_urn: ""
+      organization_urns: []
+      scopes:
+        - w_member_social
+      default_target: personal
+      linkedin_version: "202601"
+      default_visibility: PUBLIC
+      dry_run: true
+      timeout_seconds: 30
+      user_agent: AgentZero-LinkedIn-Plugin/0.3.0
+  myresumator_biz:
+    label: MyResumator Business
     linkedin:
       mode: api
       api_base_url: https://api.linkedin.com
@@ -65,4 +76,4 @@ profiles:
       default_visibility: PUBLIC
       dry_run: true
       timeout_seconds: 30
-      user_agent: AgentZero-LinkedIn-Plugin/0.2.0
+      user_agent: AgentZero-LinkedIn-Plugin/0.3.0

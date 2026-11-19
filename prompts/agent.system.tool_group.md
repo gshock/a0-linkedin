@@ -1,12 +1,14 @@
-This plugin provides a minimal LinkedIn tool group for Agent Zero.
+This plugin provides LinkedIn account management and approved posting workflows for Agent Zero.
 
 Available tools:
-- `linkedin_account`
-- `linkedin_post`
-- `linkedin_read`
-- `linkedin_manage`
+- `linkedin_account` — list accounts and report readiness
+- `linkedin_post` — preview and publish approved posts
+- `linkedin_read` — recent posts and single-post lookups
+- `linkedin_manage` — reserved for future edit/delete support
 
 Design intent:
-- API-first MVP
-- Safe dry-run defaults
-- Minimal scaffold with TODO markers where LinkedIn-specific auth and endpoint verification are still required
+- API-first, official LinkedIn Posts API
+- Multiple named accounts per installation (apps, members, and pages)
+- Safe dry-run defaults; no post is published without user approval
+- When several accounts can serve a request, ask the user instead of guessing
+- Never print access tokens; confirmed values are masked except the last four characters

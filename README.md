@@ -6,7 +6,7 @@ Manage approved LinkedIn posting workflows from Agent Zero using an API-first ap
 
 ## Release status
 
-This release is intended as **v0.2.3**.
+This release is intended as **v0.3.0**, which adds multi-account support.
 
 Current validation status:
 - personal text posting has been tested successfully
@@ -16,7 +16,16 @@ Current validation status:
 - personal **live 2-image posting** has been validated successfully with HTTP `201` using `image_paths`
 - organization posting support is included in the plugin design
 - organization posting verification is still pending with LinkedIn, so organization live validation is not yet complete
-- **org_app is under LinkedIn review** for broader organization validation workflows
+- **organization app access is under LinkedIn review** for broader organization 
+  validation workflows
+
+### Multi-account support (v0.3.0)
+
+A single installation can now hold **many LinkedIn accounts** - apps, member profiles,
+and company pages. Each account is an independent credential set. When more than one
+account can serve a request, the tools return `needs_clarification` with the candidate
+accounts and the agent asks which one to use instead of guessing.
+
 - organization image posting should still be treated as unverified until LinkedIn approval and org testing are complete
 
 For this release, organization-related functionality should be treated as **provisional** and dependent on LinkedIn app approval, token scopes, and organization role permissions.
@@ -87,49 +96,59 @@ Some read operations may not be available in all environments, even when posting
 
 ## Configuration model
 
-The plugin uses a dual-profile configuration model so personal and organization workflows can be handled separately.
+Every entry under `profiles` is one **LinkedIn account** (a credential set). An
+account can act as a person or as an organization; the plugin infers which from
+`default_target`, the scopes, and the URNs that are present.
 
-### Canonical profile structure
-- `profiles.personal_app.linkedin`
-- `profiles.org_app.linkedin`
+```yaml
+profiles:
+  justlinks:
+    label: JustLinks
+    linkedin:
+      access_token: "..."          # masked in all tool output
+      person_urn: urn:li:person:...
+      scopes: [w_member_social]
+      default_target: personal
+  myresumator_biz:
+    label: MyResumator Business
+    linkedin:
+      access_token: "..."
+      organization_urns:
+        - urn:li:organization:111
+        - urn:li:organization:222
+      scopes: [w_organization_social, r_organization_social]
+      default_target: organization
+```
+
+One token can legitimately own several organization pages, so
+`organization_urns` is a list per account. The plugin asks which page to use
+when a post does not name one.
 
 ### Routing behavior
-The plugin should route requests per call instead of assuming one global posting mode.
 
-#### Routing rules
-- `target=personal` resolves to `personal_app`
-- `target=organization` resolves to `org_app`
-- explicit `profile` override is allowed
-- if neither target nor profile is specified, the plugin should ask for clarification instead of guessing
+Requests route per call through a single decision point,
+`helpers/config.py::resolve_target_selection`:
+
+1. **Explicit `profile`** - always wins. Unknown names are a hard error, never a
+   silent fallback.
+2. **Unique capability match** - for `target: personal` or `target: organization`,
+   the plugin picks the only account that has a token plus the required scope and
+   author URN for that target.
+3. **Ambiguous** - returns `needs_clarification: true` with a `candidates` list
+   describing every usable account, so the agent can present the choice.
+
+Accounts without a token are never offered as candidates. Credentials never
+propagate between accounts.
 
 ## Settings overview
 
-The settings UI is organized into three areas:
-- **Personal**
-- **Organization**
-- **Runtime**
+The settings UI has two areas:
 
-### Personal settings
-Use this area for:
-- personal access token
-- personal scopes
-- `person_urn`
-- personal `dry_run`
-- personal default visibility
-
-### Organization settings
-Use this area for:
-- organization access token
-- organization scopes
-- `organization_urn`
-- allowed organization URN list
-- organization `dry_run`
-- organization default visibility
-
-### Runtime settings
-Use this area for:
-- active profile convenience setting
-- shared compatibility values such as LinkedIn API version
+- **Accounts** - the account list plus a per-account editor (label, token, acts
+  as, scopes, person URN or organization URNs, visibility, dry run). Add, remove,
+  rename, and set the default account here.
+- **Runtime** - shared defaults applied to every account on save: LinkedIn API
+  version, base URL, timeout. Shared defaults never include credentials.
 
 ## Tool summary
 

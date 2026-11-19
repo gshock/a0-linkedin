@@ -7,12 +7,12 @@ class LinkedInRead(Tool):
     async def execute(self, **kwargs) -> Response:
         action = self.args.get("action", "recent_posts")
 
-        from usr.plugins.linkedin.helpers.config import load_config, resolve_linkedin_config
+        from usr.plugins.linkedin.helpers.config import load_config, resolve_target_selection
         from usr.plugins.linkedin.helpers.linkedin_auth import LinkedInAuthError
         from usr.plugins.linkedin.helpers.linkedin_client import LinkedInClient
         from usr.plugins.linkedin.helpers.sanitize import normalize_target
 
-        config = load_config()
+        config = load_config(agent=self.agent)
         raw_target = self.args.get("target")
         profile = self.args.get("profile")
         organization_urn = self.args.get("organization_urn", None)
@@ -21,18 +21,17 @@ class LinkedInRead(Tool):
 
         try:
             normalized_target = normalize_target(raw_target) if raw_target else None
-            resolved_linkedin, resolved_profile, resolve_error = resolve_linkedin_config(
-                config,
-                target=normalized_target,
-                profile=profile,
-            )
-            if resolve_error:
+            selection = resolve_target_selection(config, target=normalized_target, profile=profile)
+            resolved_linkedin = selection.get("linkedin")
+            resolved_profile = selection.get("profile")
+            if not resolved_profile or not resolved_linkedin:
                 return Response(
                     message=str({
                         "ok": False,
                         "action": action,
-                        "needs_clarification": True,
-                        "message": resolve_error,
+                        "needs_clarification": bool(selection.get("needs_clarification")),
+                        "message": selection.get("error"),
+                        "candidates": selection.get("candidates", []),
                     }),
                     break_loop=False,
                 )
