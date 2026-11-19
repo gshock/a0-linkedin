@@ -57,7 +57,7 @@ submission time, since limits and required fields can change.
 - [x] README avoids diary-style development notes
 - [x] README avoids absolute local paths like `/a0/usr/...`
 - [x] README explains current scope clearly
-- [x] README explains limitations honestly (org image posting still unverified)
+- [x] README explains limitations honestly (all in-scope posting paths verified, including org image posting)
 - [x] README includes example usage
 - [x] README explains personal vs organization behavior
 - [x] README explains required LinkedIn scopes and their defaults

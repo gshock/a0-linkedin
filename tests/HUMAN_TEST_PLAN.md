@@ -224,3 +224,39 @@ Pass criteria:
 - every line prints `[PASS]`
 - final line is `All LinkedIn plugin regression checks passed.`
 - the suite leaves no `.runtime_config.json` behind and does not disturb the saved framework `config.json`
+
+---
+
+## Test 18: Preview resolves the default page
+
+Setup: an organization account with a **Default page** pinned in settings.
+
+Run `linkedin_post` with `{"action": "preview", "profile": "<org account>", "target": "organization", "text": "Test"}` and no `organization_urn`.
+
+Pass criteria:
+- `ok: true`
+- `preview.organization_urn` equals the pinned page URN
+- nothing is posted (no `status: 201`)
+
+Repeat with several pages known and **no** default pinned.
+
+Pass criteria:
+- `needs_clarification: true`
+- `candidates` lists every known page with its friendly name when resolved
+- nothing is posted
+
+---
+
+## Test 19: Live organization image post (requires explicit approval)
+
+1. Confirm the organization account's token and page role are valid.
+2. Run `linkedin_post` with `{"action": "create", "profile": "<org account>",
+   "target": "organization", "text": "<approved copy>", "image_path": "<local image>"}`.
+3. Verify the result on the LinkedIn page itself.
+
+Pass criteria:
+- HTTP `201`
+- the response carries a `media_urn` (`urn:li:image:*`), proving upload occurred
+- `post_type` reads `image`
+- the image is visible on the page
+

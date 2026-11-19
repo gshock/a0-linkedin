@@ -89,10 +89,12 @@ Use this checklist to add single-image LinkedIn post support to the plugin.
 
 ## 9. Organization-mode handling
 
-- [ ] Keep organization image posting behind the same readiness checks as text posts
-- [ ] Do not bypass org approval/scope/role requirements
-- [ ] If org live validation is still unavailable, document org image posting as provisional
-- [ ] Ensure org mode failures are explicit and operator-friendly
+- [x] Keep organization image posting behind the same readiness checks as text posts
+- [x] Do not bypass org approval/scope/role requirements
+- [x] Organization image posting validated live: single image post to
+  `urn:li:organization:100780409` returned HTTP `201` with
+  `media_urn: urn:li:image:D4E10AQG_bj_oNU7Ugw`. No provisional wording needed.
+- [x] Ensure org mode failures are explicit and operator-friendly
 
 ## 10. Testing checklist
 
@@ -108,7 +110,7 @@ Use this checklist to add single-image LinkedIn post support to the plugin.
 - [ ] Add image posting to current supported scope
 - [ ] Document one local image per post
 - [ ] Add example usage with `image_path`
-- [ ] Keep org-mode wording honest if still provisional
+- [x] Org-mode wording no longer provisional: organization image posting validated live
 
 ## 12. Release and versioning
 
@@ -124,7 +126,7 @@ Use this checklist to add single-image LinkedIn post support to the plugin.
 - [ ] Invalid image inputs fail clearly
 - [ ] README documents image support accurately
 - [ ] No secrets are introduced into tracked files
-- [ ] Org image behavior is either validated or clearly documented as provisional
+- [x] Org image behavior validated live (HTTP `201`, `media_urn` returned)
 
 ## 14. Final release checklist
 
