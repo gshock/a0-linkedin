@@ -58,7 +58,7 @@ This plugin is designed for practical LinkedIn workflows where the user wants to
 - choose between personal and organization posting targets
 - preview posts before publishing
 - publish approved text posts when the configured scopes and permissions allow it
-- publish approved **single-image posts** in personal mode
+- publish approved **single-image posts** for personal or organization targets
 - publish approved **multi-image posts** using `image_paths` for local images
 - publish approved **HEIC/HEIF photos** by automatically converting them to JPG before upload
 - retrieve recent posts where supported by LinkedIn APIs and app permissions
@@ -79,7 +79,7 @@ The plugin is intentionally conservative:
 - **URN lookup buttons** - `GET /v2/userinfo` for the person URN, `organizationAcls` for pages
 - text post preview and creation for personal and organization targets
 - **single local image post preview**
-- **single local image post creation in personal mode**
+- **single local image post creation in personal and organization modes**
 - **multi-image local post preview**
 - **multi-image local post creation in personal mode**
 - **HEIC/HEIF local image support with automatic JPG conversion in personal mode**
@@ -341,7 +341,9 @@ This release supports:
 This release does not yet support:
 - carousels
 - video upload
-- organization image posting validation
+
+Organization image posting is supported and verified: a single image post to a
+company page returned HTTP `201` with a `media_urn`.
 
 ## Security and approval expectations
 
