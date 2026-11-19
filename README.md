@@ -21,6 +21,7 @@ Every item below was exercised against the live LinkedIn API, not just written.
 | Personal multi-image posting (`image_paths`) | Verified | live 2-image post, HTTP `201` |
 | HEIC/HEIF auto-conversion to JPG | Verified | conversion then successful upload |
 | **Organization text posting** | **Verified** | org app approved, live post published |
+| **Organization image posting** | **Verified** | live image post to a page, HTTP `201` + `media_urn` |
 | Organization page discovery (`rw_organization_admin`) | Verified | returned page URN + role |
 | Person URN lookup (`/v2/userinfo`) | Verified | resolved `urn:li:person:<sub>` |
 | Browser OAuth connect flow | Verified | code exchanged, token stored per account |
@@ -34,8 +35,8 @@ Every item below was exercised against the live LinkedIn API, not just written.
 | **Default page picker** | **Verified** | org post landed on the pinned page with no URN given |
 | Label-aware page selection | Verified | explicit URN overrode the pinned default |
 
-Organization **image** posting is the remaining unverified path: text posting to a
-page is confirmed, images to a page are not yet exercised end to end.
+Every in-scope path is now verified, including organization image posting: a
+single image post to a company page returned HTTP `201` with a `media_urn`.
 
 ### Multi-account support (v0.3.1)
 
@@ -45,11 +46,12 @@ account can serve a request, the tools return `needs_clarification` with the can
 accounts and the agent asks which one to use instead of guessing.
 
 - organization **text** posting is verified end to end with an approved LinkedIn app
-- organization **image** posting remains unverified and should be treated as provisional
+- organization **image** posting is verified: a single image post to a company page
+  returned HTTP `201` with a `media_urn`
 
-Organization text workflows need: an approved app product set, the scopes above, and
-a page role for the authenticated member. Organization image workflows additionally
-need that upload path exercised against a live page, which has not been done yet.
+Organization workflows need: an approved app product set, the scopes above, and a
+page role for the authenticated member. Image posting uses the same upload path as
+personal posting, targeted at the organization author.
 
 This plugin is designed for practical LinkedIn workflows where the user wants to:
 - check LinkedIn account and configuration readiness
@@ -497,8 +499,8 @@ Organization posting and reading may require:
 - sufficient organization role permissions
 - LinkedIn app approval where applicable
 
-Organization **text** posting is verified. Organization **image** posting is the
-only remaining unvalidated organization path.
+Organization **text** and **image** posting are both verified against a live
+company page. Every in-scope posting path now has a recorded successful post.
 
 ## Troubleshooting
 
